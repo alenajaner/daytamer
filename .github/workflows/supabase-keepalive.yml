@@ -1,3 +1,4 @@
+# Pings Supabase every 3 days so the free-tier project doesn't auto-pause from inactivity
 name: Supabase keep-alive
 
 on:
