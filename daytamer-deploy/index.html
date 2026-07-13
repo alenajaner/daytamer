@@ -751,7 +751,7 @@
   }
 
   // ── Today Tab ─────────────────────────────────────────────────────────────────
-  function TodayTab({tasks,goals=[],categories,onEdit,onStatusChange,onGoToDay,onGoToGoals,onSpin,onFocus,onAddTask,defaultCat="personal"}){
+  function TodayTab({tasks,goals=[],categories,onEdit,onStatusChange,onGoToDay,onGoToGoals,onSpin,onFocus,onAddTask,onPlanDay,defaultCat="personal"}){
     const {T,accent}=useTheme();
     const today=todayStr();
     const [quickTitle,setQuickTitle]=useState("");
@@ -823,6 +823,13 @@
     return(
       <div style={{display:"flex",flexDirection:"column",height:"100%",overflowY:"auto",position:"relative"}}>
         <TodayHeader T={T} accent={accent} doneCnt={doneCnt} totalAll={totalAll} totalActive={totalActive}/>
+
+        {/* Plan my day */}
+        <div style={{padding:"10px 16px 0"}}>
+          <button onClick={onPlanDay} style={{width:"100%",padding:"13px",borderRadius:14,background:`linear-gradient(135deg, ${accent}, ${accent}cc)`,border:"none",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 16px ${accent}40`,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            <Icon name="Target" size={16} color="#fff"/> Plan my day
+          </button>
+        </div>
 
         {/* Quick add bar */}
         <div style={{padding:"10px 16px 0"}}>
@@ -1086,6 +1093,336 @@
     );
   }
 
+  // ── Plan My Day: scheduling algorithm ────────────────────────────────────────
+  // Pure function: locked tasks (already carrying a scheduledTime, e.g. meetings)
+  // pre-occupy their interval; everything else is sorted by top-3 rank, then
+  // priority, then due date, and placed sequentially into the remaining gaps,
+  // with a break inserted after every `blockMins` of placed work.
+  const timeToMins = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
+  const minsToTime = m => `${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+
+  function buildDaySchedule({tasks, workHours, breakCadence}){
+    const dayStart = workHours.start*60, dayEnd = workHours.end*60;
+    const locked = tasks.filter(t=>t.scheduledTime).map(t=>{
+      const start = timeToMins(t.scheduledTime);
+      return {task:t, start, end:start+(t.estMinutes||0)};
+    }).sort((a,b)=>a.start-b.start);
+    const rank = t => (t.topRank && t.topRankDate===todayStr()) ? t.topRank : 99;
+    const unplaced = tasks.filter(t=>!t.scheduledTime).sort((a,b)=>{
+      const rA=rank(a), rB=rank(b);
+      if(rA!==rB) return rA-rB;
+      const pA=PRIORITY_WEIGHT[a.priority]||2, pB=PRIORITY_WEIGHT[b.priority]||2;
+      if(pA!==pB) return pA-pB;
+      const dA=a.dueDate||"9999-99-99", dB=b.dueDate||"9999-99-99";
+      if(dA!==dB) return dA<dB?-1:1;
+      return 0;
+    });
+    const overlapsLocked = (pos,dur) => locked.find(l=>pos<l.end && pos+dur>l.start);
+
+    const placements=[], unfit=[];
+    let cursor=dayStart, sinceBreak=0;
+    for(const t of unplaced){
+      const dur = t.estMinutes||0;
+      if(sinceBreak>=breakCadence.blockMins){ cursor+=breakCadence.breakMins; sinceBreak=0; }
+      let block=overlapsLocked(cursor,dur);
+      while(block){ cursor=block.end; sinceBreak=0; block=overlapsLocked(cursor,dur); }
+      if(cursor+dur>dayEnd){ unfit.push(t); continue; }
+      placements.push({taskId:t.id, startTime:minsToTime(cursor), endTime:minsToTime(cursor+dur)});
+      cursor+=dur; sinceBreak+=dur;
+    }
+    return {
+      placements, unfit,
+      locked: locked.map(l=>({taskId:l.task.id, startTime:minsToTime(l.start), endTime:minsToTime(l.end)}))
+    };
+  }
+
+  // ── Plan My Day Modal ────────────────────────────────────────────────────────
+  function PlanDayModal({tasks,categories,onAdd,onUpdate,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,defaultCat="personal",onClose}){
+    const {T,accent}=useTheme();
+    const modalRef = useModalA11y(onClose);
+    const today = todayStr();
+    const [step,setStep]=useState(1);
+    const [addedIds,setAddedIds]=useState(()=>new Set());
+    const [excludedIds,setExcludedIds]=useState(()=>new Set());
+    const [schedule,setSchedule]=useState(null);
+
+    const inp={width:"100%",background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"};
+    const lbl={fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,fontWeight:700,fontFamily:"'Nunito',sans-serif"};
+    const btnPrimary={background:accent,color:"#fff",border:"none",borderRadius:12,padding:"12px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 2px 8px ${accent}40`,flex:1};
+    const btnSecondary={background:"transparent",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"12px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",flex:1};
+
+    const activeTasks = tasks.filter(t=>t.status!=="Done");
+    const todaysBase = activeTasks.filter(t=>t.scheduledDate===today||t.dueDate===today);
+    const workingIds = new Set(todaysBase.map(t=>t.id));
+    addedIds.forEach(id=>workingIds.add(id));
+    excludedIds.forEach(id=>workingIds.delete(id));
+    const workingTasks = activeTasks.filter(t=>workingIds.has(t.id));
+    const meetings = activeTasks.filter(t=>t.scheduledDate===today&&t.scheduledTime);
+    const topPicks = tasks.filter(t=>t.topRank&&t.topRankDate===today).sort((a,b)=>a.topRank-b.topRank);
+    const missingDuration = workingTasks.filter(t=>!t.estMinutes);
+
+    const [mTitle,setMTitle]=useState(""); const [mTime,setMTime]=useState(""); const [mMins,setMMins]=useState(30);
+    const addMeeting=()=>{
+      if(!mTitle.trim()||!mTime) return;
+      onAdd({id:uid(),title:mTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:mMins,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:mTime,createdAt:new Date().toISOString()});
+      setMTitle(""); setMTime("");
+    };
+
+    const [t3Search,setT3Search]=useState(""); const [t3NewTitle,setT3NewTitle]=useState("");
+    const toggleTop=(t)=>{
+      if(t.topRank&&t.topRankDate===today){ onUpdate(t.id,{topRank:null,topRankDate:null}); return; }
+      if(topPicks.length>=3) return;
+      onUpdate(t.id,{topRank:topPicks.length+1,topRankDate:today,scheduledDate:t.scheduledDate||today});
+    };
+    const addTop=()=>{
+      if(!t3NewTitle.trim()||topPicks.length>=3) return;
+      onAdd({id:uid(),title:t3NewTitle.trim(),notes:"",category:defaultCat,priority:"High",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString(),topRank:topPicks.length+1,topRankDate:today});
+      setT3NewTitle("");
+    };
+    const backlogMatches = t3Search.trim() ? activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(t3Search.toLowerCase())).slice(0,8) : [];
+
+    const [reviewSearch,setReviewSearch]=useState(""); const [reviewNewTitle,setReviewNewTitle]=useState("");
+    const reviewMatches = reviewSearch.trim() ? activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(reviewSearch.toLowerCase())).slice(0,8) : [];
+    const addExisting=(id)=>{ setAddedIds(p=>new Set([...p,id])); setExcludedIds(p=>{const n=new Set(p); n.delete(id); return n;}); setReviewSearch(""); };
+    const removeFromToday=(id)=>{ setExcludedIds(p=>new Set([...p,id])); setAddedIds(p=>{const n=new Set(p); n.delete(id); return n;}); };
+    const addNewReview=()=>{
+      if(!reviewNewTitle.trim()) return;
+      const id=uid();
+      onAdd({id,title:reviewNewTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString()});
+      setAddedIds(p=>new Set([...p,id]));
+      setReviewNewTitle("");
+    };
+
+    const generate=()=>setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence}));
+    const confirmSchedule=()=>{
+      if(!schedule) return;
+      schedule.placements.forEach(p=>onUpdate(p.taskId,{scheduledDate:today,scheduledTime:p.startTime}));
+      onClose();
+    };
+
+    const canNext = step===4 ? (workingTasks.length>0 && missingDuration.length===0) : true;
+
+    const StepHeader=({n,title})=>(
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+        <span style={{width:22,height:22,borderRadius:"50%",background:accent+"22",color:accent,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{n}</span>
+        <span style={{fontWeight:800,color:T.text,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>{title}</span>
+      </div>
+    );
+
+    return(
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Plan my day" tabIndex={-1} style={{position:"fixed",inset:0,zIndex:55,display:"flex",flexDirection:"column",background:T.bg,outline:"none"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:`1px solid ${T.border}`,background:T.surface}}>
+          <button onClick={onClose} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={20}/></button>
+          <span style={{fontWeight:800,color:T.text,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>Plan My Day · Step {step} of 5</span>
+          <div style={{width:20}}/>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:16}}>
+
+          {step===1&&(
+            <div>
+              <StepHeader n={1} title="Work hours & breaks"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Saved as your defaults for next time.</div>
+              <div style={{display:"flex",gap:10,marginBottom:14}}>
+                <div style={{flex:1}}>
+                  <div style={lbl}>Start time</div>
+                  <select value={workHours.start} onChange={e=>onWorkHoursChange({...workHours,start:parseInt(e.target.value)})} style={{...inp,cursor:"pointer"}}>
+                    {Array.from({length:24},(_,i)=><option key={i} value={i}>{i===0?"12:00 AM":i<12?`${i}:00 AM`:i===12?"12:00 PM":`${i-12}:00 PM`}</option>)}
+                  </select>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={lbl}>End time</div>
+                  <select value={workHours.end} onChange={e=>onWorkHoursChange({...workHours,end:parseInt(e.target.value)})} style={{...inp,cursor:"pointer"}}>
+                    {Array.from({length:24},(_,i)=><option key={i} value={i}>{i===0?"12:00 AM":i<12?`${i}:00 AM`:i===12?"12:00 PM":`${i-12}:00 PM`}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}>
+                  <div style={lbl}>Break every</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="number" min="15" max="480" value={breakCadence.blockMins} onChange={e=>onBreakCadenceChange({...breakCadence,blockMins:parseInt(e.target.value)||90})} style={inp}/>
+                    <span style={{fontSize:12,color:T.muted,whiteSpace:"nowrap"}}>min work</span>
+                  </div>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={lbl}>Break length</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="number" min="1" max="120" value={breakCadence.breakMins} onChange={e=>onBreakCadenceChange({...breakCadence,breakMins:parseInt(e.target.value)||10})} style={inp}/>
+                    <span style={{fontSize:12,color:T.muted,whiteSpace:"nowrap"}}>min</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step===2&&(
+            <div>
+              <StepHeader n={2} title="Any fixed-time commitments today?"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Meetings, appointments — anything already anchored to a time. The schedule builds around these.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                <input value={mTitle} onChange={e=>setMTitle(e.target.value)} placeholder="e.g. Team sync" style={inp}/>
+                <div style={{display:"flex",gap:8}}>
+                  <input type="time" value={mTime} onChange={e=>setMTime(e.target.value)} style={{...inp,flex:1}}/>
+                  <select value={mMins} onChange={e=>setMMins(parseInt(e.target.value))} style={{...inp,flex:1,cursor:"pointer"}}>
+                    {EST_OPTIONS.map(m=><option key={m} value={m}>{EST_LABELS[m]}</option>)}
+                  </select>
+                </div>
+                <button onClick={addMeeting} disabled={!mTitle.trim()||!mTime} style={{...btnPrimary,opacity:(!mTitle.trim()||!mTime)?0.5:1,cursor:(!mTitle.trim()||!mTime)?"not-allowed":"pointer"}}>Add</button>
+              </div>
+              {meetings.length>0&&(
+                <div>
+                  <div style={lbl}>Today's fixed-time items</div>
+                  {[...meetings].sort((a,b)=>a.scheduledTime<b.scheduledTime?-1:1).map(t=>(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderRadius:12,padding:"9px 12px",marginBottom:6}}>
+                      <span style={{fontSize:12,color:"#7DCFCB",fontWeight:700}}>{formatTime(t.scheduledTime)}</span>
+                      <span style={{flex:1,fontSize:13,color:T.text,fontWeight:600}}>{t.title}</span>
+                      <button onClick={()=>onUpdate(t.id,{scheduledTime:""})} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step===3&&(
+            <div>
+              <StepHeader n={3} title="What are your top 3 priorities today?"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>These get scheduled first and marked ⭐ in your plan.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                {topPicks.map(t=>(
+                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:accent+"14",border:`1.5px solid ${accent}50`,borderRadius:12,padding:"9px 12px"}}>
+                    <span style={{fontSize:13,fontWeight:800,color:accent}}>#{t.topRank}</span>
+                    <span style={{flex:1,fontSize:13,color:T.text,fontWeight:700}}>{t.title}</span>
+                    <button onClick={()=>toggleTop(t)} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
+                  </div>
+                ))}
+                {topPicks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>No top priorities picked yet.</div>}
+              </div>
+              {topPicks.length<3&&(
+                <>
+                  <div style={lbl}>Add from your tasks</div>
+                  <input value={t3Search} onChange={e=>setT3Search(e.target.value)} placeholder="Search tasks…" style={{...inp,marginBottom:8}}/>
+                  {backlogMatches.map(t=>(
+                    <button key={t.id} onClick={()=>toggleTop(t)} style={{display:"block",width:"100%",textAlign:"left",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 12px",marginBottom:6,cursor:"pointer",fontSize:13,color:T.text,fontFamily:"'Nunito Sans',sans-serif"}}>
+                      {t.title}
+                    </button>
+                  ))}
+                  <div style={{...lbl,marginTop:14}}>Or add something new</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <input value={t3NewTitle} onChange={e=>setT3NewTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTop()} placeholder="New top-priority task…" style={{...inp,flex:1}}/>
+                    <button onClick={addTop} disabled={!t3NewTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!t3NewTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {step===4&&(
+            <div>
+              <StepHeader n={4} title="Review today's tasks"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Everything here needs a duration before you can build the schedule.</div>
+              {missingDuration.length>0&&(
+                <div style={{background:"#f59e0b18",border:"1.5px solid #f59e0b50",borderRadius:12,padding:12,marginBottom:14}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:8,fontFamily:"'Nunito',sans-serif"}}>Add a duration to continue</div>
+                  {missingDuration.map(t=>(
+                    <div key={t.id} style={{marginBottom:10}}>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6,fontFamily:"'Nunito',sans-serif"}}>{t.title}</div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {EST_OPTIONS.map(m=><button key={m} onClick={()=>onUpdate(t.id,{estMinutes:m})} style={{border:"none",background:T.subtle,color:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                {workingTasks.map(t=>{
+                  const cat=categories.find(c=>c.id===t.category);
+                  return(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderLeft:`4px solid ${cat?.color||accent}`,borderRadius:12,padding:"9px 12px"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:T.text,display:"flex",alignItems:"center",gap:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {t.topRank&&t.topRankDate===today&&"⭐"}{t.scheduledTime&&"🔒"}{t.title}
+                        </div>
+                        <div style={{fontSize:11,color:t.estMinutes?T.muted:"#f59e0b",fontWeight:t.estMinutes?400:700}}>{t.estMinutes?fmtMins(t.estMinutes):"No duration set"}</div>
+                      </div>
+                      <button onClick={()=>removeFromToday(t.id)} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
+                    </div>
+                  );
+                })}
+                {workingTasks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>Nothing scheduled for today yet — add something below.</div>}
+              </div>
+              <div style={lbl}>Add from your tasks</div>
+              <input value={reviewSearch} onChange={e=>setReviewSearch(e.target.value)} placeholder="Search tasks…" style={{...inp,marginBottom:8}}/>
+              {reviewMatches.map(t=>(
+                <button key={t.id} onClick={()=>addExisting(t.id)} style={{display:"block",width:"100%",textAlign:"left",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 12px",marginBottom:6,cursor:"pointer",fontSize:13,color:T.text,fontFamily:"'Nunito Sans',sans-serif"}}>
+                  {t.title}
+                </button>
+              ))}
+              <div style={{...lbl,marginTop:14}}>Or add something new</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={reviewNewTitle} onChange={e=>setReviewNewTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNewReview()} placeholder="New task…" style={{...inp,flex:1}}/>
+                <button onClick={addNewReview} disabled={!reviewNewTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!reviewNewTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
+              </div>
+            </div>
+          )}
+
+          {step===5&&(
+            <div>
+              <StepHeader n={5} title="Review your schedule"/>
+              {!schedule
+                ? <div style={{color:T.muted,fontSize:13}}>Generating…</div>
+                : (()=>{
+                    const all=[
+                      ...schedule.locked.map(x=>({...x,locked:true})),
+                      ...schedule.placements.map(x=>({...x,locked:false})),
+                    ].sort((a,b)=>a.startTime<b.startTime?-1:1);
+                    const rows=[]; let prevEnd=null;
+                    all.forEach(item=>{
+                      if(prevEnd&&timeToMins(item.startTime)>timeToMins(prevEnd)) rows.push({type:"break",mins:timeToMins(item.startTime)-timeToMins(prevEnd)});
+                      rows.push({type:"task",...item});
+                      prevEnd=item.endTime;
+                    });
+                    return(
+                      <>
+                        {rows.map((r,i)=>{
+                          if(r.type==="break") return <div key={i} style={{fontSize:11,color:T.muted,padding:"4px 0",textAlign:"center",fontStyle:"italic"}}>☕ {r.mins}m break</div>;
+                          const t=tasks.find(x=>x.id===r.taskId); if(!t) return null;
+                          const cat=categories.find(c=>c.id===t.category);
+                          return(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderRadius:12,borderLeft:`4px solid ${cat?.color||accent}`,padding:"9px 12px",marginBottom:6}}>
+                              <span style={{fontSize:12,color:"#7DCFCB",fontWeight:700,width:56,flexShrink:0}}>{formatTime(r.startTime)}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5}}>
+                                  {t.topRank&&t.topRankDate===today&&"⭐"}{r.locked&&"🔒"}{t.title}
+                                </div>
+                                <div style={{fontSize:11,color:T.muted}}>{fmtMins(t.estMinutes)}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {schedule.unfit.length>0&&(
+                          <div style={{marginTop:12,background:"#ef444418",border:"1.5px solid #ef444450",borderRadius:12,padding:12}}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6,fontFamily:"'Nunito',sans-serif"}}>Didn't fit today</div>
+                            {schedule.unfit.map(t=><div key={t.id} style={{fontSize:12,color:T.text,padding:"3px 0"}}>{t.title} ({fmtMins(t.estMinutes)})</div>)}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()
+              }
+            </div>
+          )}
+
+        </div>
+        <div style={{display:"flex",gap:10,padding:"12px 16px 24px",borderTop:`1px solid ${T.border}`,background:T.surface,flexShrink:0}}>
+          {step>1&&<button onClick={()=>setStep(s=>s-1)} style={btnSecondary}>Back</button>}
+          {step<5&&<button disabled={!canNext} onClick={()=>{ if(step===4) generate(); setStep(s=>s+1); }} style={{...btnPrimary,opacity:canNext?1:0.5,cursor:canNext?"pointer":"not-allowed"}}>Next</button>}
+          {step===5&&<button onClick={confirmSchedule} disabled={!schedule} style={{...btnPrimary,opacity:schedule?1:0.5}}>Confirm & schedule</button>}
+        </div>
+      </div>
+    );
+  }
+
   // ── List Tab ──────────────────────────────────────────────────────────────────
   function ListTab({tasks,categories,onEdit,onStatusChange,onAdd,savedSorts,onSaveSorts,onFocus,doneVis="instant",defaultCat="personal",savedFilters=[],onSaveFilters}){
     const [showPast,setShowPast]=useState(false);
@@ -1095,11 +1432,13 @@
     const [gridSortCol,setGridSortCol]=useState(null); // {col, dir}
     const toggleGridSort=(col)=>setGridSortCol(p=>p?.col===col?{col,dir:p.dir==="asc"?"desc":"asc"}:{col,dir:"asc"});
     const [selectedIds,setSelectedIds]=useState(new Set());
+    const [selectMode,setSelectMode]=useState(false);
     const [showBulkSched,setShowBulkSched]=useState(false);
     const [bulkSchedDate,setBulkSchedDate]=useState("");
     const toggleSelect=(id)=>setSelectedIds(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
     const selectAll=()=>setSelectedIds(new Set(sorted.map(t=>t.id)));
     const clearSelect=()=>setSelectedIds(new Set());
+    const toggleSelectMode=()=>{setSelectMode(m=>{if(m)clearSelect();return !m;});};
     const bulkDone=()=>{selectedIds.forEach(id=>onStatusChange(id,"Done"));clearSelect();};
     const bulkDelete=()=>{selectedIds.forEach(id=>onEdit({id,_delete:true}));clearSelect();};
     const bulkSchedule=(date)=>{selectedIds.forEach(id=>{const t=tasks.find(x=>x.id===id);if(t)onEdit({...t,scheduledDate:date});});clearSelect();setShowBulkSched(false);}; 
@@ -1247,6 +1586,7 @@
             ))}
             <button onClick={()=>setShowSortBuilder(!showSortBuilder)} style={{flexShrink:0,border:`1.5px solid ${showSortBuilder?accent:T.border}`,color:showSortBuilder?accent:T.muted,background:showSortBuilder?accent+"12":"transparent",padding:"4px 12px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:showSortBuilder?700:500}}>Sort ↕</button>
             <button onClick={()=>setShowSaveFilter(s=>!s)} style={{flexShrink:0,border:`1.5px solid ${showSaveFilter?accent:T.border}`,color:showSaveFilter?accent:T.muted,background:showSaveFilter?accent+"12":"transparent",padding:"4px 12px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:700}}>Save view</button>
+            <button onClick={toggleSelectMode} className="tap-target" style={{flexShrink:0,border:`1.5px solid ${selectMode?accent:T.border}`,color:selectMode?accent:T.muted,background:selectMode?accent+"12":"transparent",padding:"4px 12px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:700}}>{selectMode?"Cancel":"Select"}</button>
             <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:`1.5px solid ${T.border}`,flexShrink:0}}>
               {[{id:"list",icon:"List"},{id:"table",icon:"LayoutDashboard"}].map(m=>(
                 <button key={m.id} onClick={()=>setViewMode(m.id)}
@@ -1345,7 +1685,7 @@
             <div style={{overflowX:"auto"}}><table style={{width:"100%",minWidth:600,borderCollapse:"collapse",fontSize:12,fontFamily:"'Nunito Sans',sans-serif"}}>
               <thead>
                 <tr style={{background:T.surface,borderBottom:`2px solid ${T.border}`,position:"sticky",top:0,zIndex:2}}>
-                  <th style={{width:50,padding:"8px 8px",textAlign:"center"}}><input type="checkbox" onChange={e=>e.target.checked?selectAll():clearSelect()} checked={selectedIds.size===gridSorted.length&&gridSorted.length>0} style={{cursor:"pointer",accentColor:accent}}/></th>
+                  <th style={{width:50,padding:"8px 8px",textAlign:"center"}}>{selectMode&&<input type="checkbox" onChange={e=>e.target.checked?selectAll():clearSelect()} checked={selectedIds.size===gridSorted.length&&gridSorted.length>0} style={{cursor:"pointer",accentColor:accent}}/>}</th>
                   {["Task","Category","Priority","Status","Scheduled","Est.","Due"].map(h=>{
                     const isSorted=gridSortCol?.col===h;
                     return(<th key={h} onClick={()=>toggleGridSort(h)} style={{padding:"8px 10px",textAlign:"left",fontSize:10,fontWeight:700,color:isSorted?accent:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap",fontFamily:"'Nunito',sans-serif",cursor:"pointer",userSelect:"none",position:h==="Task"?"sticky":undefined,left:h==="Task"?40:undefined,background:h==="Task"?T.surface:undefined,zIndex:h==="Task"?3:undefined}}>
@@ -1367,7 +1707,7 @@
                       {/* Check */}
                       <td style={{padding:"6px 8px",textAlign:"center"}}>
                         <div style={{display:"flex",gap:4,alignItems:"center",justifyContent:"center"}}>
-                          <input type="checkbox" checked={selectedIds.has(t.id)} onChange={e=>{e.stopPropagation();toggleSelect(t.id);}} style={{cursor:"pointer",accentColor:accent}}/>
+                          {selectMode&&<input type="checkbox" checked={selectedIds.has(t.id)} onChange={e=>{e.stopPropagation();toggleSelect(t.id);}} style={{cursor:"pointer",accentColor:accent}}/>}
                           <button onClick={()=>onStatusChange(t.id,t.status==="Done"?"Not Started":"Done")}
                             className="tap-target" style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${t.status==="Done"?"#4ade80":T.muted}`,background:t.status==="Done"?"#4ade8022":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
                             {t.status==="Done"&&<Icon name="Check" size={9} color="#4ade80"/>}
@@ -1448,8 +1788,8 @@
             return(
               <div key={t.id} style={{background:T.card,borderRadius:14,borderLeft:`4px solid ${cat?.color||accent}`,padding:"11px 14px",display:"flex",alignItems:"flex-start",gap:10,boxShadow:"0 1px 4px rgba(61,74,92,0.07)",marginBottom:7}}>
                 <div style={{display:"flex",flexDirection:"column",gap:2,flexShrink:0,alignItems:"center"}}>
-                  <input type="checkbox" checked={selectedIds.has(t.id)} onChange={e=>{e.stopPropagation();toggleSelect(t.id);}}
-                    style={{width:14,height:14,cursor:"pointer",accentColor:accent}}/>
+                  {selectMode&&<input type="checkbox" checked={selectedIds.has(t.id)} onChange={e=>{e.stopPropagation();toggleSelect(t.id);}}
+                    style={{width:14,height:14,cursor:"pointer",accentColor:accent}}/>}
                   <button onClick={()=>onStatusChange(t.id,t.status==="Done"?"Not Started":"Done")} style={{width:21,height:21,borderRadius:"50%",border:`2.5px solid ${t.status==="Done"?"#4ade80":T.muted}`,background:t.status==="Done"?"#4ade8022":"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                     {t.status==="Done"&&<Icon name="Check" size={10} color="#4ade80"/>}
                   </button>
@@ -2815,6 +3155,9 @@
     const [isDark,setIsDark]=useState(()=>LS.get("dt_dark",false));
     const [dayHours,setDayHours]=useState(()=>LS.get("dt_dayhours",{start:6,end:22}));
     const [slotMins,setSlotMins]=useState(()=>LS.get("dt_slotmins",15)); // 15 | 30 | 60
+    const [workHours,setWorkHours]=useState(()=>LS.get("dt_workhours",{start:9,end:17}));
+    const [breakCadence,setBreakCadence]=useState(()=>LS.get("dt_breakcadence",{blockMins:90,breakMins:10}));
+    const [showPlanDay,setShowPlanDay]=useState(false);
     const [doneVis,setDoneVis]=useState(()=>LS.get("dt_donevis","instant"));
     const [defaultCat,setDefaultCat]=useState(()=>LS.get("dt_defaultcat","personal"));
     const [syncKey,setSyncKey]=useState(()=>LS.get("dt_synckey",""));
@@ -2849,6 +3192,8 @@
           dayHours: JSON.parse(localStorage.getItem("dt_dayhours")||"null"),
           doneVis: JSON.parse(localStorage.getItem("dt_donevis")||'"instant"'),
           defaultCat: JSON.parse(localStorage.getItem("dt_defaultcat")||'"personal"'),
+          workHours: JSON.parse(localStorage.getItem("dt_workhours")||"null"),
+          breakCadence: JSON.parse(localStorage.getItem("dt_breakcadence")||"null"),
         };
         await sbSet(syncKey, snapshot);
         setSyncStatus("ok");
@@ -2882,6 +3227,8 @@
         if(cloud.dayHours) setDayHours(cloud.dayHours);
         if(cloud.doneVis) setDoneVis(cloud.doneVis);
         if(cloud.defaultCat) setDefaultCat(cloud.defaultCat);
+        if(cloud.workHours) setWorkHours(cloud.workHours);
+        if(cloud.breakCadence) setBreakCadence(cloud.breakCadence);
 
         setSyncStatus("ok");
         setTimeout(()=>setSyncStatus("idle"), 2000);
@@ -2900,6 +3247,8 @@
     useEffect(()=>LS.set("dt_wide",wideMode),[wideMode]);
     useEffect(()=>LS.set("dt_dayhours",dayHours),[dayHours]);
     useEffect(()=>LS.set("dt_slotmins",slotMins),[slotMins]);
+    useEffect(()=>LS.set("dt_workhours",workHours),[workHours]);
+    useEffect(()=>LS.set("dt_breakcadence",breakCadence),[breakCadence]);
     useEffect(()=>LS.set("dt_donevis",doneVis),[doneVis]);
     useEffect(()=>LS.set("dt_synckey",syncKey),[syncKey]);
     useEffect(()=>LS.set("dt_defaultcat",defaultCat),[defaultCat]);
@@ -2912,7 +3261,7 @@
       if(!syncKey) return;
       clearTimeout(syncTimer.current);
       // Capture current state in closure so push uses fresh values
-      const localSnapshot = {tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat};
+      const localSnapshot = {tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence};
       syncTimer.current = setTimeout(async ()=>{
         if(!syncKey) return;
         setSyncStatus("syncing");
@@ -2939,7 +3288,7 @@
           .catch(()=>setSyncStatus("error"));
       }, 2000);
       return ()=>clearTimeout(syncTimer.current);
-    }, [tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, syncKey]);
+    }, [tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence, syncKey]);
 
     // Pull on mount
     useEffect(()=>{ if(syncKey) pullSync(); }, []);
@@ -3106,7 +3455,7 @@
           {/* Content */}
           <div style={{flex:1,overflow:"hidden",background:T.bg}}>
             {tab==="goals"&&<GoalsTab goals={goals} onGoalsChange={setGoals} tasks={tasks} onAddTask={addTask} onEditTask={setEditTask} categories={categories} defaultCat={defaultCat}/>}
-            {tab==="today"&&<TodayTab goals={goals} tasks={tasks} categories={categories} onEdit={setEditTask} onStatusChange={(id,s)=>{updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""})}} onGoToDay={(t)=>{if(t==="list")setTab("list");else{setDayTarget(todayStr());setTab("day");}}} onGoToGoals={()=>setTab("goals")} onSpin={()=>setShowWheel(true)} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}} onAddTask={addTask}/>}
+            {tab==="today"&&<TodayTab goals={goals} tasks={tasks} categories={categories} onEdit={setEditTask} onStatusChange={(id,s)=>{updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""})}} onGoToDay={(t)=>{if(t==="list")setTab("list");else{setDayTarget(todayStr());setTab("day");}}} onGoToGoals={()=>setTab("goals")} onSpin={()=>setShowWheel(true)} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}} onAddTask={addTask} onPlanDay={()=>setShowPlanDay(true)}/>}
             {tab==="list"&&<ListTab tasks={tasks} categories={categories} onEdit={setEditTask} doneVis={doneVis} defaultCat={defaultCat} savedFilters={savedFilters} onSaveFilters={setSavedFilters} onStatusChange={(id,s)=>{updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""})}} onAdd={addTask} savedSorts={savedSorts} onSaveSorts={setSavedSorts} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}}/>}
             {tab==="day"&&<DayTab tasks={tasks} categories={categories} onUpdate={updateTask} onEdit={setEditTask} onAdd={addTask} defaultCat={defaultCat} initialDate={dayTarget} dayHours={dayHours} slotMins={slotMins}/>}
             {tab==="week"&&<WeekTab tasks={tasks} categories={categories} onDayClick={handleDayClick} onAdd={addTask} defaultCat={defaultCat}/>}
@@ -3128,6 +3477,7 @@
           {focusTask&&<FocusMode task={focusTask} onDone={completed=>{updateTask(focusTask.id,{status:completed?"Done":"Not Started"});setFocusTask(null);}} onGiveUp={()=>setFocusTask(null)}/>}
           {showWheel&&<SpinWheel tasks={tasks} categories={categories} onClose={()=>{setShowWheel(false);setWheelWinner(null);}} onResult={id=>{updateTask(id,{status:"In Progress"});setWheelWinner(tasks.find(t=>t.id===id));}} onFocus={w=>{setShowWheel(false);setFocusTask(w||wheelWinner);}} />}
           {editTask&&<TaskModal task={editTask} categories={categories} onSave={handleSave} onDelete={handleDelete} onClose={()=>setEditTask(null)}/>}
+          {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)}/>}
           {showSettings&&<SettingsPanel categories={categories} onCategoriesChange={setCategories} onDeleteCategory={deleteCategory} tasks={tasks} dayHours={dayHours} onDayHoursChange={setDayHours} slotMins={slotMins} onSlotMinsChange={setSlotMins} doneVis={doneVis} onDoneVisChange={setDoneVis} defaultCat={defaultCat} onDefaultCatChange={setDefaultCat} syncKey={syncKey} onSyncKeyChange={setSyncKey} syncStatus={syncStatus} onPullSync={async()=>{await pushSync();await pullSync();}}
             onImport={imported=>{setTasks(imported);setShowSettings(false);}} onClose={()=>setShowSettings(false)}
             themeId={themeId} isDark={isDark} onThemeChange={setThemeId} onModeChange={setIsDark}/>}
