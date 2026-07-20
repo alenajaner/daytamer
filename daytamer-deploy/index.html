@@ -1179,10 +1179,10 @@
       onAdd({id:uid(),title:t3NewTitle.trim(),notes:"",category:defaultCat,priority:"High",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString(),topRank:topPicks.length+1,topRankDate:today});
       setT3NewTitle("");
     };
-    const backlogMatches = t3Search.trim() ? activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(t3Search.toLowerCase())).slice(0,8) : [];
+    const backlogMatches = activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(t3Search.trim().toLowerCase())).slice(0,8);
 
     const [reviewSearch,setReviewSearch]=useState(""); const [reviewNewTitle,setReviewNewTitle]=useState("");
-    const reviewMatches = reviewSearch.trim() ? activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(reviewSearch.toLowerCase())).slice(0,8) : [];
+    const reviewMatches = activeTasks.filter(t=>!workingIds.has(t.id)&&t.title.toLowerCase().includes(reviewSearch.trim().toLowerCase())).slice(0,8);
     const addExisting=(id)=>{ setAddedIds(p=>new Set([...p,id])); setExcludedIds(p=>{const n=new Set(p); n.delete(id); return n;}); setReviewSearch(""); };
     const removeFromToday=(id)=>{ setExcludedIds(p=>new Set([...p,id])); setAddedIds(p=>{const n=new Set(p); n.delete(id); return n;}); };
     const addNewReview=()=>{
