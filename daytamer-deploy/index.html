@@ -1854,14 +1854,14 @@
               </div>
             );
           })}
-          {viewMode==="list"&&sorted.length===0&&pastTasks.length===0&&<div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14,fontFamily:"'Nunito',sans-serif"}}>No tasks match your filters.</div>}
-          {viewMode==="list"&&sorted.length===0&&pastTasks.length>0&&activeTasks.length===0&&<div style={{textAlign:"center",color:T.muted,padding:"24px 0 8px",fontSize:14,fontFamily:"'Nunito',sans-serif"}}>All caught up! 🎉</div>}
+          {viewMode==="list"&&sorted.length===0&&sortedPast.length===0&&<div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14,fontFamily:"'Nunito',sans-serif"}}>No tasks match your filters.</div>}
+          {viewMode==="list"&&sorted.length===0&&sortedPast.length>0&&<div style={{textAlign:"center",color:T.muted,padding:"24px 0 8px",fontSize:14,fontFamily:"'Nunito',sans-serif"}}>All caught up! 🎉</div>}
           {/* Past tasks collapsible section */}
-          {pastTasks.length>0&&(
+          {sortedPast.length>0&&(
             <div style={{marginTop:8}}>
               <button onClick={()=>setShowPast(p=>!p)}
                 style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:"transparent",border:`1.5px solid ${T.border}`,borderRadius:12,padding:"10px 14px",cursor:"pointer",marginBottom:showPast?10:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:T.muted,fontFamily:"'Nunito',sans-serif"}}>Past tasks · {pastTasks.length}</span>
+                <span style={{fontSize:12,fontWeight:700,color:T.muted,fontFamily:"'Nunito',sans-serif"}}>Past tasks · {sortedPast.length}</span>
                 <Icon name={showPast?"ChevronUp":"ChevronDown"} size={14} color={T.muted}/>
               </button>
               {showPast&&sortedPast.map(t=>{
