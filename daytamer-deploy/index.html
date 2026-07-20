@@ -1123,7 +1123,15 @@
     let cursor=dayStart, sinceBreak=0;
     for(const t of unplaced){
       const dur = t.estMinutes||0;
-      if(sinceBreak>=breakCadence.blockMins){ cursor+=breakCadence.breakMins; sinceBreak=0; }
+      // "before": take the break as soon as the next task would blow the budget,
+      // even if that means breaking a little early (no overshoot, ever).
+      // "after" (default): let the current task run to completion first, then
+      // break — never splits a task, but can overshoot the block by up to one
+      // task's length.
+      const dueForBreak = breakCadence.mode==="before"
+        ? (sinceBreak>0 && sinceBreak+dur>breakCadence.blockMins)
+        : (sinceBreak>=breakCadence.blockMins);
+      if(dueForBreak){ cursor+=breakCadence.breakMins; sinceBreak=0; }
       let block=overlapsLocked(cursor,dur);
       while(block){ cursor=block.end; sinceBreak=0; block=overlapsLocked(cursor,dur); }
       if(cursor+dur>dayEnd){ unfit.push(t); continue; }
@@ -1172,12 +1180,28 @@
     const removeFromToday=(id)=>{ setExcludedIds(p=>new Set([...p,id])); setIncludedIds(p=>{const n=new Set(p); n.delete(id); return n;}); };
 
     const [newTaskTitle,setNewTaskTitle]=useState("");
+    const [newTaskMins,setNewTaskMins]=useState(null);
+    const [splitChunks,setSplitChunks]=useState(false);
+    const [chunkCount,setChunkCount]=useState(2);
     const addNewToday=()=>{
       if(!newTaskTitle.trim()) return;
-      const id=uid();
-      onAdd({id,title:newTaskTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString()});
-      setIncludedIds(p=>new Set([...p,id]));
-      setNewTaskTitle("");
+      const base={notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString()};
+      if(splitChunks&&newTaskMins&&chunkCount>1){
+        const per=Math.round(newTaskMins/chunkCount);
+        const ids=[];
+        for(let i=1;i<=chunkCount;i++){
+          const id=uid();
+          const mins = i===chunkCount ? (newTaskMins-per*(chunkCount-1)) : per;
+          onAdd({...base,id,title:`${newTaskTitle.trim()} (${i}/${chunkCount})`,estMinutes:mins});
+          ids.push(id);
+        }
+        setIncludedIds(p=>new Set([...p,...ids]));
+      } else {
+        const id=uid();
+        onAdd({...base,id,title:newTaskTitle.trim(),estMinutes:newTaskMins});
+        setIncludedIds(p=>new Set([...p,id]));
+      }
+      setNewTaskTitle(""); setNewTaskMins(null); setSplitChunks(false); setChunkCount(2);
     };
 
     const toggleTop=(t)=>{
@@ -1257,9 +1281,25 @@
                 {activeTasks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>No open tasks yet — add one below.</div>}
               </div>
               <div style={lbl}>Add something new</div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNewToday()} placeholder="New task…" style={{...inp,flex:1}}/>
-                <button onClick={addNewToday} disabled={!newTaskTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!newTaskTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <input value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNewToday()} placeholder="New task…" style={inp}/>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {EST_OPTIONS.map(m=><button key={m} onClick={()=>setNewTaskMins(m)} style={{border:`2px solid ${newTaskMins===m?accent:"transparent"}`,background:newTaskMins===m?accent+"22":T.subtle,color:newTaskMins===m?accent:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
+                </div>
+                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.muted,cursor:newTaskMins?"pointer":"not-allowed",opacity:newTaskMins?1:0.5,fontFamily:"'Nunito Sans',sans-serif"}}>
+                  <input type="checkbox" disabled={!newTaskMins} checked={splitChunks} onChange={e=>setSplitChunks(e.target.checked)} style={{cursor:"pointer",accentColor:accent}}/>
+                  Split into smaller chunks
+                </label>
+                {splitChunks&&newTaskMins&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:12,color:T.muted}}>Chunks:</span>
+                    <button onClick={()=>setChunkCount(c=>Math.max(2,c-1))} style={{width:26,height:26,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:14}}>−</button>
+                    <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:16,textAlign:"center"}}>{chunkCount}</span>
+                    <button onClick={()=>setChunkCount(c=>Math.min(8,c+1))} style={{width:26,height:26,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:14}}>+</button>
+                    <span style={{fontSize:11,color:T.muted}}>≈{fmtMins(Math.round(newTaskMins/chunkCount))} each</span>
+                  </div>
+                )}
+                <button onClick={addNewToday} disabled={!newTaskTitle.trim()} style={{...btnPrimary,opacity:!newTaskTitle.trim()?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Icon name="Plus" size={16}/> Add</button>
               </div>
             </div>
           )}
@@ -1318,6 +1358,19 @@
                     <span style={{fontSize:12,color:T.muted,whiteSpace:"nowrap"}}>min</span>
                   </div>
                 </div>
+              </div>
+              <div style={lbl}>When a task would blow the budget</div>
+              <div style={{display:"flex",gap:8,marginBottom:20}}>
+                <button onClick={()=>onBreakCadenceChange({...breakCadence,mode:"after"})}
+                  style={{flex:1,textAlign:"left",border:`1.5px solid ${(breakCadence.mode||"after")==="after"?accent:T.border}`,background:(breakCadence.mode||"after")==="after"?accent+"14":T.card,borderRadius:12,padding:"9px 12px",cursor:"pointer",fontFamily:"'Nunito Sans',sans-serif"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:(breakCadence.mode||"after")==="after"?accent:T.text}}>Break after</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:2}}>Finish the task first, break right after — may run a bit over</div>
+                </button>
+                <button onClick={()=>onBreakCadenceChange({...breakCadence,mode:"before"})}
+                  style={{flex:1,textAlign:"left",border:`1.5px solid ${breakCadence.mode==="before"?accent:T.border}`,background:breakCadence.mode==="before"?accent+"14":T.card,borderRadius:12,padding:"9px 12px",cursor:"pointer",fontFamily:"'Nunito Sans',sans-serif"}}>
+                  <div style={{fontSize:12,fontWeight:700,color:breakCadence.mode==="before"?accent:T.text}}>Break before</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:2}}>Take the break before starting — never runs over, may break early</div>
+                </button>
               </div>
               <div style={lbl}>Fixed-time meetings</div>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
@@ -3139,7 +3192,7 @@
     const [dayHours,setDayHours]=useState(()=>LS.get("dt_dayhours",{start:6,end:22}));
     const [slotMins,setSlotMins]=useState(()=>LS.get("dt_slotmins",15)); // 15 | 30 | 60
     const [workHours,setWorkHours]=useState(()=>LS.get("dt_workhours",{start:9,end:17}));
-    const [breakCadence,setBreakCadence]=useState(()=>LS.get("dt_breakcadence",{blockMins:90,breakMins:10}));
+    const [breakCadence,setBreakCadence]=useState(()=>LS.get("dt_breakcadence",{blockMins:90,breakMins:10,mode:"after"}));
     const [showPlanDay,setShowPlanDay]=useState(false);
     const [doneVis,setDoneVis]=useState(()=>LS.get("dt_donevis","instant"));
     const [defaultCat,setDefaultCat]=useState(()=>LS.get("dt_defaultcat","personal"));
