@@ -1142,7 +1142,7 @@
     const modalRef = useModalA11y(onClose);
     const today = todayStr();
     const [step,setStep]=useState(1);
-    const [addedIds,setAddedIds]=useState(()=>new Set());
+    const [includedIds,setIncludedIds]=useState(()=>new Set());
     const [excludedIds,setExcludedIds]=useState(()=>new Set());
     const [schedule,setSchedule]=useState(null);
 
@@ -1152,14 +1152,39 @@
     const btnSecondary={background:"transparent",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"12px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",flex:1};
 
     const activeTasks = tasks.filter(t=>t.status!=="Done");
-    const todaysBase = activeTasks.filter(t=>t.scheduledDate===today||t.dueDate===today);
-    const workingIds = new Set(todaysBase.map(t=>t.id));
-    addedIds.forEach(id=>workingIds.add(id));
+    const autoToday = activeTasks.filter(t=>t.scheduledDate===today||t.dueDate===today);
+    const workingIds = new Set(autoToday.map(t=>t.id));
+    includedIds.forEach(id=>workingIds.add(id));
     excludedIds.forEach(id=>workingIds.delete(id));
     const workingTasks = activeTasks.filter(t=>workingIds.has(t.id));
-    const meetings = activeTasks.filter(t=>t.scheduledDate===today&&t.scheduledTime);
     const topPicks = tasks.filter(t=>t.topRank&&t.topRankDate===today).sort((a,b)=>a.topRank-b.topRank);
     const missingDuration = workingTasks.filter(t=>!t.estMinutes);
+
+    const toggleToday=(t)=>{
+      if(workingIds.has(t.id)){
+        setExcludedIds(p=>new Set([...p,t.id]));
+        setIncludedIds(p=>{const n=new Set(p); n.delete(t.id); return n;});
+      } else {
+        setIncludedIds(p=>new Set([...p,t.id]));
+        setExcludedIds(p=>{const n=new Set(p); n.delete(t.id); return n;});
+      }
+    };
+    const removeFromToday=(id)=>{ setExcludedIds(p=>new Set([...p,id])); setIncludedIds(p=>{const n=new Set(p); n.delete(id); return n;}); };
+
+    const [newTaskTitle,setNewTaskTitle]=useState("");
+    const addNewToday=()=>{
+      if(!newTaskTitle.trim()) return;
+      const id=uid();
+      onAdd({id,title:newTaskTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString()});
+      setIncludedIds(p=>new Set([...p,id]));
+      setNewTaskTitle("");
+    };
+
+    const toggleTop=(t)=>{
+      if(t.topRank&&t.topRankDate===today){ onUpdate(t.id,{topRank:null,topRankDate:null}); return; }
+      if(topPicks.length>=3) return;
+      onUpdate(t.id,{topRank:topPicks.length+1,topRankDate:today});
+    };
 
     const [mTitle,setMTitle]=useState(""); const [mTime,setMTime]=useState(""); const [mMins,setMMins]=useState(30);
     const addMeeting=()=>{
@@ -1167,40 +1192,24 @@
       onAdd({id:uid(),title:mTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:mMins,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:mTime,createdAt:new Date().toISOString()});
       setMTitle(""); setMTime("");
     };
+    const meetings = workingTasks.filter(t=>t.scheduledTime);
 
-    const [t3Search,setT3Search]=useState(""); const [t3NewTitle,setT3NewTitle]=useState("");
-    const toggleTop=(t)=>{
-      if(t.topRank&&t.topRankDate===today){ onUpdate(t.id,{topRank:null,topRankDate:null}); return; }
-      if(topPicks.length>=3) return;
-      onUpdate(t.id,{topRank:topPicks.length+1,topRankDate:today,scheduledDate:t.scheduledDate||today});
-    };
-    const addTop=()=>{
-      if(!t3NewTitle.trim()||topPicks.length>=3) return;
-      onAdd({id:uid(),title:t3NewTitle.trim(),notes:"",category:defaultCat,priority:"High",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString(),topRank:topPicks.length+1,topRankDate:today});
-      setT3NewTitle("");
-    };
-    const backlogMatches = activeTasks.filter(t=>t.title.toLowerCase().includes(t3Search.trim().toLowerCase())).slice(0,8);
+    // Auto-(re)generate whenever the working set, hours, or break settings change
+    // while on the results step — so removing an unfit task live-updates the plan
+    // instead of requiring a manual re-run.
+    const workingSignature = workingTasks.map(t=>`${t.id}:${t.estMinutes}:${t.scheduledTime||""}`).join(",");
+    useEffect(()=>{
+      if(step!==4) return;
+      setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence}));
+    }, [step, workingSignature, workHours.start, workHours.end, breakCadence.blockMins, breakCadence.breakMins]);
 
-    const [reviewSearch,setReviewSearch]=useState(""); const [reviewNewTitle,setReviewNewTitle]=useState("");
-    const reviewMatches = activeTasks.filter(t=>t.title.toLowerCase().includes(reviewSearch.trim().toLowerCase())).slice(0,8);
-    const addExisting=(id)=>{ setAddedIds(p=>new Set([...p,id])); setExcludedIds(p=>{const n=new Set(p); n.delete(id); return n;}); setReviewSearch(""); };
-    const removeFromToday=(id)=>{ setExcludedIds(p=>new Set([...p,id])); setAddedIds(p=>{const n=new Set(p); n.delete(id); return n;}); };
-    const addNewReview=()=>{
-      if(!reviewNewTitle.trim()) return;
-      const id=uid();
-      onAdd({id,title:reviewNewTitle.trim(),notes:"",category:defaultCat,priority:"Med",sequence:0,dueDate:"",estMinutes:null,status:"Not Started",assignedTo:"Me",scheduledDate:today,scheduledTime:"",createdAt:new Date().toISOString()});
-      setAddedIds(p=>new Set([...p,id]));
-      setReviewNewTitle("");
-    };
-
-    const generate=()=>setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence}));
     const confirmSchedule=()=>{
       if(!schedule) return;
       schedule.placements.forEach(p=>onUpdate(p.taskId,{scheduledDate:today,scheduledTime:p.startTime}));
       onClose();
     };
 
-    const canNext = step===4 ? (workingTasks.length>0 && missingDuration.length===0) : true;
+    const canNext = step===1 ? (workingTasks.length>0 && missingDuration.length===0) : true;
 
     const StepHeader=({n,title})=>(
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -1213,15 +1222,73 @@
       <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Plan my day" tabIndex={-1} style={{position:"fixed",inset:0,zIndex:55,display:"flex",flexDirection:"column",background:T.bg,outline:"none"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderBottom:`1px solid ${T.border}`,background:T.surface}}>
           <button onClick={onClose} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={20}/></button>
-          <span style={{fontWeight:800,color:T.text,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>Plan My Day · Step {step} of 5</span>
+          <span style={{fontWeight:800,color:T.text,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>Plan My Day · Step {step} of 4</span>
           <div style={{width:20}}/>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:16}}>
 
           {step===1&&(
             <div>
-              <StepHeader n={1} title="Work hours & breaks"/>
-              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Saved as your defaults for next time.</div>
+              <StepHeader n={1} title="Which tasks are for today?"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Toggle everything you plan to work on today. Anything missing a duration needs one before you continue.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                {activeTasks.map(t=>{
+                  const cat=categories.find(c=>c.id===t.category);
+                  const included=workingIds.has(t.id);
+                  return(
+                    <div key={t.id}>
+                      <div onClick={()=>toggleToday(t)} style={{display:"flex",alignItems:"center",gap:10,background:included?accent+"14":T.card,border:`1.5px solid ${included?accent+"50":T.border}`,borderLeft:`4px solid ${cat?.color||accent}`,borderRadius:12,padding:"9px 12px",cursor:"pointer"}}>
+                        <span style={{width:20,height:20,borderRadius:6,border:`2px solid ${included?accent:T.muted}`,background:included?accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {included&&<Icon name="Check" size={12} color="#fff"/>}
+                        </span>
+                        <span style={{flex:1,fontSize:13,color:T.text,fontWeight:included?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+                        {t.estMinutes
+                          ? <span style={{fontSize:11,color:T.muted,flexShrink:0}}>{fmtMins(t.estMinutes)}</span>
+                          : included&&<span style={{fontSize:11,color:"#f59e0b",fontWeight:700,flexShrink:0}}>No duration</span>}
+                      </div>
+                      {included&&!t.estMinutes&&(
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"8px 4px 0 34px"}}>
+                          {EST_OPTIONS.map(m=><button key={m} onClick={()=>onUpdate(t.id,{estMinutes:m})} style={{border:"none",background:T.subtle,color:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {activeTasks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>No open tasks yet — add one below.</div>}
+              </div>
+              <div style={lbl}>Add something new</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={newTaskTitle} onChange={e=>setNewTaskTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNewToday()} placeholder="New task…" style={{...inp,flex:1}}/>
+                <button onClick={addNewToday} disabled={!newTaskTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!newTaskTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
+              </div>
+            </div>
+          )}
+
+          {step===2&&(
+            <div>
+              <StepHeader n={2} title="What are your top 3 priorities today?"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Pick up to 3 from today's list. These get scheduled first and marked ⭐.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {workingTasks.map(t=>{
+                  const ranked = t.topRank&&t.topRankDate===today;
+                  const disabled = !ranked&&topPicks.length>=3;
+                  return(
+                    <button key={t.id} onClick={()=>toggleTop(t)} disabled={disabled}
+                      style={{display:"flex",alignItems:"center",gap:10,textAlign:"left",background:ranked?accent+"14":T.card,border:`1.5px solid ${ranked?accent+"50":T.border}`,borderRadius:12,padding:"9px 12px",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,fontFamily:"'Nunito Sans',sans-serif"}}>
+                      <span style={{width:22,height:22,borderRadius:"50%",background:ranked?accent:T.subtle,color:ranked?"#fff":T.muted,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ranked?t.topRank:""}</span>
+                      <span style={{flex:1,fontSize:13,color:T.text,fontWeight:ranked?700:500}}>{t.title}</span>
+                    </button>
+                  );
+                })}
+                {workingTasks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>No tasks selected for today yet.</div>}
+              </div>
+            </div>
+          )}
+
+          {step===3&&(
+            <div>
+              <StepHeader n={3} title="Planning mode"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Work hours and breaks are saved as your defaults. Add any meetings so the schedule builds around them.</div>
               <div style={{display:"flex",gap:10,marginBottom:14}}>
                 <div style={{flex:1}}>
                   <div style={lbl}>Start time</div>
@@ -1236,7 +1303,7 @@
                   </select>
                 </div>
               </div>
-              <div style={{display:"flex",gap:10}}>
+              <div style={{display:"flex",gap:10,marginBottom:20}}>
                 <div style={{flex:1}}>
                   <div style={lbl}>Break every</div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1252,13 +1319,7 @@
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {step===2&&(
-            <div>
-              <StepHeader n={2} title="Any fixed-time commitments today?"/>
-              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Meetings, appointments — anything already anchored to a time. The schedule builds around these.</div>
+              <div style={lbl}>Fixed-time meetings</div>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
                 <input value={mTitle} onChange={e=>setMTitle(e.target.value)} placeholder="e.g. Team sync" style={inp}/>
                 <div style={{display:"flex",gap:8}}>
@@ -1271,7 +1332,6 @@
               </div>
               {meetings.length>0&&(
                 <div>
-                  <div style={lbl}>Today's fixed-time items</div>
                   {[...meetings].sort((a,b)=>a.scheduledTime<b.scheduledTime?-1:1).map(t=>(
                     <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderRadius:12,padding:"9px 12px",marginBottom:6}}>
                       <span style={{fontSize:12,color:"#7DCFCB",fontWeight:700}}>{formatTime(t.scheduledTime)}</span>
@@ -1284,91 +1344,9 @@
             </div>
           )}
 
-          {step===3&&(
-            <div>
-              <StepHeader n={3} title="What are your top 3 priorities today?"/>
-              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>These get scheduled first and marked ⭐ in your plan.</div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
-                {topPicks.map(t=>(
-                  <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:accent+"14",border:`1.5px solid ${accent}50`,borderRadius:12,padding:"9px 12px"}}>
-                    <span style={{fontSize:13,fontWeight:800,color:accent}}>#{t.topRank}</span>
-                    <span style={{flex:1,fontSize:13,color:T.text,fontWeight:700}}>{t.title}</span>
-                    <button onClick={()=>toggleTop(t)} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
-                  </div>
-                ))}
-                {topPicks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>No top priorities picked yet.</div>}
-              </div>
-              {topPicks.length<3&&(
-                <>
-                  <div style={lbl}>Add from your tasks</div>
-                  <input value={t3Search} onChange={e=>setT3Search(e.target.value)} placeholder="Search tasks…" style={{...inp,marginBottom:8}}/>
-                  {backlogMatches.map(t=>(
-                    <button key={t.id} onClick={()=>toggleTop(t)} style={{display:"block",width:"100%",textAlign:"left",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 12px",marginBottom:6,cursor:"pointer",fontSize:13,color:T.text,fontFamily:"'Nunito Sans',sans-serif"}}>
-                      {t.title}
-                    </button>
-                  ))}
-                  <div style={{...lbl,marginTop:14}}>Or add something new</div>
-                  <div style={{display:"flex",gap:8}}>
-                    <input value={t3NewTitle} onChange={e=>setT3NewTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTop()} placeholder="New top-priority task…" style={{...inp,flex:1}}/>
-                    <button onClick={addTop} disabled={!t3NewTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!t3NewTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
           {step===4&&(
             <div>
-              <StepHeader n={4} title="Review today's tasks"/>
-              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Everything here needs a duration before you can build the schedule.</div>
-              {missingDuration.length>0&&(
-                <div style={{background:"#f59e0b18",border:"1.5px solid #f59e0b50",borderRadius:12,padding:12,marginBottom:14}}>
-                  <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:8,fontFamily:"'Nunito',sans-serif"}}>Add a duration to continue</div>
-                  {missingDuration.map(t=>(
-                    <div key={t.id} style={{marginBottom:10}}>
-                      <div style={{fontSize:13,fontWeight:700,color:T.text,marginBottom:6,fontFamily:"'Nunito',sans-serif"}}>{t.title}</div>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {EST_OPTIONS.map(m=><button key={m} onClick={()=>onUpdate(t.id,{estMinutes:m})} style={{border:"none",background:T.subtle,color:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
-                {workingTasks.map(t=>{
-                  const cat=categories.find(c=>c.id===t.category);
-                  return(
-                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderLeft:`4px solid ${cat?.color||accent}`,borderRadius:12,padding:"9px 12px"}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:T.text,display:"flex",alignItems:"center",gap:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {t.topRank&&t.topRankDate===today&&"⭐"}{t.scheduledTime&&"🔒"}{t.title}
-                        </div>
-                        <div style={{fontSize:11,color:t.estMinutes?T.muted:"#f59e0b",fontWeight:t.estMinutes?400:700}}>{t.estMinutes?fmtMins(t.estMinutes):"No duration set"}</div>
-                      </div>
-                      <button onClick={()=>removeFromToday(t.id)} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
-                    </div>
-                  );
-                })}
-                {workingTasks.length===0&&<div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>Nothing scheduled for today yet — add something below.</div>}
-              </div>
-              <div style={lbl}>Add from your tasks</div>
-              <input value={reviewSearch} onChange={e=>setReviewSearch(e.target.value)} placeholder="Search tasks…" style={{...inp,marginBottom:8}}/>
-              {reviewMatches.map(t=>(
-                <button key={t.id} onClick={()=>addExisting(t.id)} style={{display:"block",width:"100%",textAlign:"left",background:T.card,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 12px",marginBottom:6,cursor:"pointer",fontSize:13,color:T.text,fontFamily:"'Nunito Sans',sans-serif"}}>
-                  {t.title}
-                </button>
-              ))}
-              <div style={{...lbl,marginTop:14}}>Or add something new</div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={reviewNewTitle} onChange={e=>setReviewNewTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNewReview()} placeholder="New task…" style={{...inp,flex:1}}/>
-                <button onClick={addNewReview} disabled={!reviewNewTitle.trim()} style={{...btnPrimary,flex:"0 0 auto",opacity:!reviewNewTitle.trim()?0.5:1}}><Icon name="Plus" size={16}/></button>
-              </div>
-            </div>
-          )}
-
-          {step===5&&(
-            <div>
-              <StepHeader n={5} title="Review your schedule"/>
+              <StepHeader n={4} title="Your schedule"/>
               {!schedule
                 ? <div style={{color:T.muted,fontSize:13}}>Generating…</div>
                 : (()=>{
@@ -1402,8 +1380,13 @@
                         })}
                         {schedule.unfit.length>0&&(
                           <div style={{marginTop:12,background:"#ef444418",border:"1.5px solid #ef444450",borderRadius:12,padding:12}}>
-                            <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6,fontFamily:"'Nunito',sans-serif"}}>Didn't fit today</div>
-                            {schedule.unfit.map(t=><div key={t.id} style={{fontSize:12,color:T.text,padding:"3px 0"}}>{t.title} ({fmtMins(t.estMinutes)})</div>)}
+                            <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:8,fontFamily:"'Nunito',sans-serif"}}>⚠️ Not enough time today for {schedule.unfit.length} task{schedule.unfit.length>1?"s":""} — remove some to fit the rest</div>
+                            {schedule.unfit.map(t=>(
+                              <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"5px 0"}}>
+                                <span style={{flex:1,fontSize:12,color:T.text}}>{t.title} ({fmtMins(t.estMinutes)})</span>
+                                <button onClick={()=>removeFromToday(t.id)} style={{background:"#ef444422",border:"1px solid #ef444460",color:"#ef4444",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif",flexShrink:0}}>Remove</button>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </>
@@ -1416,8 +1399,8 @@
         </div>
         <div style={{display:"flex",gap:10,padding:"12px 16px 24px",borderTop:`1px solid ${T.border}`,background:T.surface,flexShrink:0}}>
           {step>1&&<button onClick={()=>setStep(s=>s-1)} style={btnSecondary}>Back</button>}
-          {step<5&&<button disabled={!canNext} onClick={()=>{ if(step===4) generate(); setStep(s=>s+1); }} style={{...btnPrimary,opacity:canNext?1:0.5,cursor:canNext?"pointer":"not-allowed"}}>Next</button>}
-          {step===5&&<button onClick={confirmSchedule} disabled={!schedule} style={{...btnPrimary,opacity:schedule?1:0.5}}>Confirm & schedule</button>}
+          {step<4&&<button disabled={!canNext} onClick={()=>setStep(s=>s+1)} style={{...btnPrimary,opacity:canNext?1:0.5,cursor:canNext?"pointer":"not-allowed"}}>Next</button>}
+          {step===4&&<button onClick={confirmSchedule} disabled={!schedule} style={{...btnPrimary,opacity:schedule?1:0.5}}>Confirm & schedule</button>}
         </div>
       </div>
     );
