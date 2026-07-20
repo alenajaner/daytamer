@@ -837,8 +837,9 @@
             <input value={quickTitle} onChange={e=>setQuickTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleQuickAdd()}
               style={{flex:1,background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${quickTitle?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif",transition:"border 0.15s"}}
               placeholder="Quick add a task…"/>
-            <button onClick={handleQuickAdd} style={{background:accent,color:"#fff",border:"none",borderRadius:12,padding:"0 14px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:`0 2px 8px ${accent}50`}}>
-              <Icon name="Plus" size={18}/>
+            <button onClick={handleQuickAdd} disabled={!quickTitle.trim()}
+              style={{background:quickTitle.trim()?accent:T.subtle,color:quickTitle.trim()?"#fff":T.muted,border:"none",borderRadius:12,padding:"0 14px",cursor:quickTitle.trim()?"pointer":"default",display:"flex",alignItems:"center",boxShadow:quickTitle.trim()?`0 2px 8px ${accent}50`:"none",transition:"background 0.15s"}}>
+              <Icon name={quickTitle.trim()?"Check":"Plus"} size={18}/>
             </button>
           </div>
           {quickTitle&&(
@@ -1548,36 +1549,48 @@
             <input value={title} onChange={e=>setTitle(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleAdd()}
               style={{flex:1,background:T.card,color:T.text,borderRadius:12,padding:"11px 16px",fontSize:14,border:`1.5px solid ${title?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif",transition:"border 0.15s"}}
               placeholder="Add a task… press Enter"/>
-            <button onClick={handleAdd} style={{background:accent,color:"#fff",border:"none",borderRadius:12,padding:"0 16px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:`0 2px 8px ${accent}50`}}><Icon name="Plus" size={18}/></button>
+            <button onClick={handleAdd} disabled={!title.trim()}
+              style={{background:title.trim()?accent:T.subtle,color:title.trim()?"#fff":T.muted,border:"none",borderRadius:12,padding:"0 16px",cursor:title.trim()?"pointer":"default",display:"flex",alignItems:"center",boxShadow:title.trim()?`0 2px 8px ${accent}50`:"none",transition:"background 0.15s"}}><Icon name={title.trim()?"Check":"Plus"} size={18}/></button>
           </div>
           {title&&(
             <div style={{background:T.card,borderRadius:12,padding:"10px 12px",border:`1.5px solid ${accent}30`,display:"flex",flexDirection:"column",gap:8,marginBottom:8}}>
-              <div style={{display:"flex",gap:6}}>
-                {["High","Med","Low"].map(p=>(
-                  <button key={p} onClick={()=>setQPriority(p)}
-                    style={{flex:1,border:`2px solid ${qPriority===p?PRIORITY_COLORS[p]:"transparent"}`,background:qPriority===p?PRIORITY_COLORS[p]+"22":T.subtle,color:qPriority===p?PRIORITY_COLORS[p]:T.muted,padding:"5px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                    {p}
-                  </button>
-                ))}
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Priority</div>
+                <div style={{display:"flex",gap:6}}>
+                  {["High","Med","Low"].map(p=>(
+                    <button key={p} onClick={()=>setQPriority(p)}
+                      style={{flex:1,border:`2px solid ${qPriority===p?PRIORITY_COLORS[p]:"transparent"}`,background:qPriority===p?PRIORITY_COLORS[p]+"22":T.subtle,color:qPriority===p?PRIORITY_COLORS[p]:T.muted,padding:"5px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
-                {categories.map(c=>(
-                  <button key={c.id} onClick={()=>setQCat(c.id)}
-                    style={{flexShrink:0,border:`2px solid ${qCat===c.id?c.color:"transparent"}`,background:qCat===c.id?c.color+"22":T.subtle,color:qCat===c.id?c.color:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",gap:4}}>
-                    {qCat===c.id&&<span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block"}}/>}
-                    {c.name}
-                  </button>
-                ))}
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Category</div>
+                <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
+                  {categories.map(c=>(
+                    <button key={c.id} onClick={()=>setQCat(c.id)}
+                      style={{flexShrink:0,border:`2px solid ${qCat===c.id?c.color:"transparent"}`,background:qCat===c.id?c.color+"22":T.subtle,color:qCat===c.id?c.color:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",gap:4}}>
+                      {qCat===c.id&&<span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block"}}/>}
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
-                {[15,30,45,60,90,120].map(m=>(
-                  <button key={m} onClick={()=>setQMins(m)}
-                    style={{flexShrink:0,border:`2px solid ${qMins===m?accent:"transparent"}`,background:qMins===m?accent+"22":T.subtle,color:qMins===m?accent:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                    {fmtMins(m)}
-                  </button>
-                ))}
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Duration</div>
+                <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
+                  {[15,30,45,60,90,120].map(m=>(
+                    <button key={m} onClick={()=>setQMins(m)}
+                      style={{flexShrink:0,border:`2px solid ${qMins===m?accent:"transparent"}`,background:qMins===m?accent+"22":T.subtle,color:qMins===m?accent:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {fmtMins(m)}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div style={{display:"flex",gap:6,marginBottom:qSchedMode!=="none"?6:0}}>
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>When</div>
+                <div style={{display:"flex",gap:6,marginBottom:qSchedMode!=="none"?6:0}}>
                 {[{id:"none",label:"No date"},{id:"today",label:"Today"},{id:"later",label:"Schedule later"}].map(opt=>(
                   <button key={opt.id} onClick={()=>{
                     setQSchedMode(opt.id);
@@ -1605,6 +1618,7 @@
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
           <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,marginBottom:6}} className="hide-scrollbar">
