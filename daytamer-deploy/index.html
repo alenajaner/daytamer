@@ -840,70 +840,80 @@
               onFocus={()=>setQuickFocused(true)} onBlur={()=>setQuickFocused(false)}
               style={{flex:1,background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${quickTitle||quickFocused?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif",transition:"border 0.15s",boxShadow:quickFocused?`0 0 0 3px ${accent}25`:"none"}}
               placeholder="Start typing to quick add…"/>
-            <button onClick={()=>quickTitle.trim()?handleQuickAdd():quickInputRef.current?.focus()}
-              style={{background:quickTitle.trim()?accent:T.subtle,color:quickTitle.trim()?"#fff":T.muted,border:"none",borderRadius:12,padding:"0 14px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:quickTitle.trim()?`0 2px 8px ${accent}50`:"none",transition:"background 0.15s"}}>
-              <Icon name={quickTitle.trim()?"Check":"Plus"} size={18}/>
-            </button>
+            {quickTitle.trim()&&(
+              <button onClick={handleQuickAdd}
+                style={{background:accent,color:"#fff",border:"none",borderRadius:12,padding:"0 14px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:`0 2px 8px ${accent}50`}}>
+                <Icon name="Check" size={18}/>
+              </button>
+            )}
           </div>
           {quickTitle&&(
             <div style={{background:T.card,borderRadius:12,padding:"10px 12px",border:`1.5px solid ${accent}30`,display:"flex",flexDirection:"column",gap:8}}>
-              {/* Priority */}
-              <div style={{display:"flex",gap:6}}>
-                {["High","Med","Low"].map(p=>(
-                  <button key={p} onClick={()=>setQuickPriority(p)}
-                    style={{flex:1,border:`2px solid ${quickPriority===p?PRIORITY_COLORS[p]:"transparent"}`,background:quickPriority===p?PRIORITY_COLORS[p]+"22":T.subtle,color:quickPriority===p?PRIORITY_COLORS[p]:T.muted,padding:"5px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                    {p}
-                  </button>
-                ))}
-              </div>
-              {/* Category */}
-              <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
-                {categories.map(c=>(
-                  <button key={c.id} onClick={()=>setQuickCat(c.id)}
-                    style={{flexShrink:0,border:`2px solid ${quickCat===c.id?c.color:"transparent"}`,background:quickCat===c.id?c.color+"22":T.subtle,color:quickCat===c.id?c.color:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",gap:4}}>
-                    {quickCat===c.id&&<span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block"}}/>}
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-              {/* Est time */}
-              <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
-                {[15,30,45,60,90,120].map(m=>(
-                  <button key={m} onClick={()=>setQuickMins(m)}
-                    style={{flexShrink:0,border:`2px solid ${quickMins===m?accent:"transparent"}`,background:quickMins===m?accent+"22":T.subtle,color:quickMins===m?accent:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                    {fmtMins(m)}
-                  </button>
-                ))}
-              </div>
-              {/* Schedule */}
-              <div style={{display:"flex",gap:6,marginBottom:quickSchedMode!=="none"?6:0}}>
-                {[{id:"none",label:"No date"},{id:"today",label:"Today"},{id:"later",label:"Schedule later"}].map(opt=>(
-                  <button key={opt.id} onClick={()=>{
-                    setQuickSchedMode(opt.id);
-                    if(opt.id==="today"){setQuickDate(todayStr());} 
-                    else if(opt.id==="none"){setQuickDate("");setQuickTime("");}
-                  }}
-                    style={{flex:1,padding:"5px 4px",borderRadius:8,border:`2px solid ${quickSchedMode===opt.id?accent:"transparent"}`,background:quickSchedMode===opt.id?accent+"22":T.subtle,color:quickSchedMode===opt.id?accent:T.muted,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap"}}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {quickSchedMode!=="none"&&(
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Priority</div>
                 <div style={{display:"flex",gap:6}}>
-                  {quickSchedMode==="later"&&(
-                    <div style={{flex:1,position:"relative"}}>
-                      <input type="date" value={quickDate} onChange={e=>setQuickDate(e.target.value)}
-                        style={{width:"100%",background:T.card,color:quickDate?T.text:T.muted,borderRadius:10,padding:"6px 10px",fontSize:12,border:`1.5px solid ${quickDate?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"}}/>
-                    </div>
-                  )}
-                  <div style={{flex:1,position:"relative"}}>
-                    <input type="time" value={quickTime} onChange={e=>setQuickTime(e.target.value)}
-                      style={{width:"100%",background:T.card,color:quickTime?T.text:T.muted,borderRadius:10,padding:"6px 10px",fontSize:12,border:`1.5px solid ${quickTime?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"}}
-                      placeholder="Time (optional)"/>
-                    {quickTime&&<button onClick={()=>setQuickTime("")} className="tap-target" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,cursor:"pointer",padding:0,display:"flex"}}><Icon name="X" size={10}/></button>}
-                  </div>
+                  {["High","Med","Low"].map(p=>(
+                    <button key={p} onClick={()=>setQuickPriority(p)}
+                      style={{flex:1,border:`2px solid ${quickPriority===p?PRIORITY_COLORS[p]:"transparent"}`,background:quickPriority===p?PRIORITY_COLORS[p]+"22":T.subtle,color:quickPriority===p?PRIORITY_COLORS[p]:T.muted,padding:"5px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {p}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Category</div>
+                <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
+                  {categories.map(c=>(
+                    <button key={c.id} onClick={()=>setQuickCat(c.id)}
+                      style={{flexShrink:0,border:`2px solid ${quickCat===c.id?c.color:"transparent"}`,background:quickCat===c.id?c.color+"22":T.subtle,color:quickCat===c.id?c.color:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",gap:4}}>
+                      {quickCat===c.id&&<span style={{width:6,height:6,borderRadius:"50%",background:c.color,display:"inline-block"}}/>}
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>Duration</div>
+                <div style={{display:"flex",gap:6,overflowX:"auto"}} className="hide-scrollbar">
+                  {[15,30,45,60,90,120].map(m=>(
+                    <button key={m} onClick={()=>setQuickMins(m)}
+                      style={{flexShrink:0,border:`2px solid ${quickMins===m?accent:"transparent"}`,background:quickMins===m?accent+"22":T.subtle,color:quickMins===m?accent:T.muted,padding:"4px 10px",borderRadius:999,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {fmtMins(m)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>When</div>
+                <div style={{display:"flex",gap:6,marginBottom:quickSchedMode!=="none"?6:0}}>
+                  {[{id:"none",label:"No date"},{id:"today",label:"Today"},{id:"later",label:"Schedule later"}].map(opt=>(
+                    <button key={opt.id} onClick={()=>{
+                      setQuickSchedMode(opt.id);
+                      if(opt.id==="today"){setQuickDate(todayStr());}
+                      else if(opt.id==="none"){setQuickDate("");setQuickTime("");}
+                    }}
+                      style={{flex:1,padding:"5px 4px",borderRadius:8,border:`2px solid ${quickSchedMode===opt.id?accent:"transparent"}`,background:quickSchedMode===opt.id?accent+"22":T.subtle,color:quickSchedMode===opt.id?accent:T.muted,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap"}}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {quickSchedMode!=="none"&&(
+                  <div style={{display:"flex",gap:6}}>
+                    {quickSchedMode==="later"&&(
+                      <div style={{flex:1,position:"relative"}}>
+                        <input type="date" value={quickDate} onChange={e=>setQuickDate(e.target.value)}
+                          style={{width:"100%",background:T.card,color:quickDate?T.text:T.muted,borderRadius:10,padding:"6px 10px",fontSize:12,border:`1.5px solid ${quickDate?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"}}/>
+                      </div>
+                    )}
+                    <div style={{flex:1,position:"relative"}}>
+                      <input type="time" value={quickTime} onChange={e=>setQuickTime(e.target.value)}
+                        style={{width:"100%",background:T.card,color:quickTime?T.text:T.muted,borderRadius:10,padding:"6px 10px",fontSize:12,border:`1.5px solid ${quickTime?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"}}
+                        placeholder="Time (optional)"/>
+                      {quickTime&&<button onClick={()=>setQuickTime("")} className="tap-target" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:T.muted,cursor:"pointer",padding:0,display:"flex"}}><Icon name="X" size={10}/></button>}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1555,8 +1565,10 @@
               onFocus={()=>setTitleFocused(true)} onBlur={()=>setTitleFocused(false)}
               style={{flex:1,background:T.card,color:T.text,borderRadius:12,padding:"11px 16px",fontSize:14,border:`1.5px solid ${title||titleFocused?accent:T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif",transition:"border 0.15s",boxShadow:titleFocused?`0 0 0 3px ${accent}25`:"none"}}
               placeholder="Start typing to add a task…"/>
-            <button onClick={()=>title.trim()?handleAdd():titleInputRef.current?.focus()}
-              style={{background:title.trim()?accent:T.subtle,color:title.trim()?"#fff":T.muted,border:"none",borderRadius:12,padding:"0 16px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:title.trim()?`0 2px 8px ${accent}50`:"none",transition:"background 0.15s"}}><Icon name={title.trim()?"Check":"Plus"} size={18}/></button>
+            {title.trim()&&(
+              <button onClick={handleAdd}
+                style={{background:accent,color:"#fff",border:"none",borderRadius:12,padding:"0 16px",cursor:"pointer",display:"flex",alignItems:"center",boxShadow:`0 2px 8px ${accent}50`}}><Icon name="Check" size={18}/></button>
+            )}
           </div>
           {title&&(
             <div style={{background:T.card,borderRadius:12,padding:"10px 12px",border:`1.5px solid ${accent}30`,display:"flex",flexDirection:"column",gap:8,marginBottom:8}}>
