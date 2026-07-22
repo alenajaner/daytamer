@@ -45,7 +45,7 @@
     sunrise: { name:"Sunrise", emoji:"🌅", accent:{light:"#F5A442",dark:"#E3C96D"},
       dark:  { bg:"#24221F", surface:"#2C2A26", card:"#34312C", border:"#48433C", text:"#F1E9D9", muted:"#A89F8E", subtle:"#2A2723", navBg:"#24221F" },
       light: { bg:"#FBF8F3", surface:"#FFFFFF", card:"#FFFDF9", border:"#E8DCC8", text:"#3D4A5C", muted:"#736556", subtle:"#F3ECDF", navBg:"#FFFFFF" } },
-    teal: { name:"Teal", emoji:"🌊", accent:{light:"#b4ded9",dark:"#7fa39e"},
+    teal: { name:"Teal", emoji:"🌊", accent:{light:"#91bdb3",dark:"#7fa39e"},
       dark:  { bg:"#171D1C", surface:"#1E2524", card:"#262E2D", border:"#384341", text:"#D8E6E3", muted:"#8EA6A2", subtle:"#1F2726", navBg:"#171D1C" },
       light: { bg:"#F5FAF9", surface:"#FFFFFF", card:"#E6F2F0", border:"#C3DDD9", text:"#23322F", muted:"#5B7A76", subtle:"#DCEFEC", navBg:"#FFFFFF" } },
     ocean: { name:"Ocean", emoji:"🌊", accent:"#0ea5e9",
@@ -536,7 +536,7 @@
   function SpinWheel({tasks, categories, onClose, onResult, onFocus}){
     const [poolMode, setPoolMode] = useState('all'); // 'all' | 'unscheduled'
     const [filterCats, setFilterCats] = useState([]); // empty = all categories
-    const {T, accent} = useTheme();
+    const {T, accent, accentText} = useTheme();
     const modalRef = useModalA11y(onClose);
     const canvasRef = useRef(null);
     const [spinning, setSpinning] = useState(false);
@@ -550,10 +550,17 @@
       (filterCats.length===0||filterCats.includes(t.category))
     );
 
-    const WHEEL_COLORS = [
-      "#F5A442","#7DCFCB","#fb7185","#4ade80","#b79cf5","#60a5fa","#f59e0b",
-      "#34d399","#f472b6","#a78bfa","#38bdf8","#fbbf24"
-    ];
+    const WHEEL_COLORS = useMemo(() => {
+      const h = accent.replace("#","");
+      const hx = h.length===3 ? h.split("").map(c=>c+c).join("") : h;
+      const r=parseInt(hx.slice(0,2),16)/255, g=parseInt(hx.slice(2,4),16)/255, b=parseInt(hx.slice(4,6),16)/255;
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn, l0=(mx+mn)/2;
+      let hue=0, sat=0;
+      if(d){ sat = l0>0.5 ? d/(2-mx-mn) : d/(mx+mn);
+        hue = mx===r ? ((g-b)/d+(g<b?6:0)) : mx===g ? ((b-r)/d+2) : ((r-g)/d+4); hue*=60; }
+      const S=Math.min(70,Math.max(32,sat*100));
+      return [57,43,52,38,60,46,55,41,58,44,50,37].map(L=>`hsl(${Math.round(hue)}, ${Math.round(S)}%, ${L}%)`);
+    }, [accent]);
 
     const drawWheel = (angle) => {
       const canvas = canvasRef.current;
@@ -741,7 +748,7 @@
             </div>
           ) : (
             <button onClick={spin} disabled={spinning}
-              style={{width:"100%",marginTop:16,padding:"14px",borderRadius:16,background:spinning?"transparent":accent,border:spinning?`2px solid ${accent}`:"none",color:spinning?accent:"#fff",fontSize:15,fontWeight:800,cursor:spinning?"default":"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:spinning?"none":`0 4px 16px ${accent}50`,transition:"all 0.2s",letterSpacing:"0.02em"}}>
+              style={{width:"100%",marginTop:16,padding:"14px",borderRadius:16,background:spinning?"transparent":accent,border:spinning?`2px solid ${accent}`:"none",color:spinning?accent:accentText,fontSize:15,fontWeight:800,cursor:spinning?"default":"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:spinning?"none":`0 4px 16px ${accent}50`,transition:"all 0.2s",letterSpacing:"0.02em"}}>
               {spinning ? "Spinning… 🌀" : "🎡 SPIN!"}
             </button>
           )}
@@ -752,7 +759,7 @@
 
   // ── Today Tab ─────────────────────────────────────────────────────────────────
   function TodayTab({tasks,goals=[],categories,onEdit,onStatusChange,onGoToDay,onGoToGoals,onSpin,onFocus,onAddTask,onPlanDay,defaultCat="personal"}){
-    const {T,accent}=useTheme();
+    const {T,accent,accentText}=useTheme();
     const today=todayStr();
     const [quickTitle,setQuickTitle]=useState("");
     const quickInputRef=useRef(null);
@@ -828,8 +835,8 @@
 
         {/* Plan my day */}
         <div style={{padding:"10px 16px 0"}}>
-          <button onClick={onPlanDay} style={{width:"100%",padding:"13px",borderRadius:14,background:`linear-gradient(135deg, ${accent}, ${accent}cc)`,border:"none",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 16px ${accent}40`,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
-            <Icon name="Target" size={16} color="#fff"/> Plan my day
+          <button onClick={onPlanDay} style={{width:"100%",padding:"13px",borderRadius:14,background:`linear-gradient(135deg, ${accent}, ${accent}cc)`,border:"none",color:accentText,fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 16px ${accent}40`,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            <Icon name="Target" size={16} color={accentText}/> Plan my day
           </button>
         </div>
 
@@ -945,7 +952,7 @@
         {/* Spin the Wheel button */}
         <div style={{padding:"10px 16px 0"}}>
           <button onClick={onSpin}
-            style={{width:"100%",padding:"13px",borderRadius:14,background:`linear-gradient(135deg, #F5A442, #F0C070)`,border:"none",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:"0 4px 16px rgba(245,164,66,0.4)",display:"flex",alignItems:"center",justifyContent:"center",gap:10,letterSpacing:"0.01em"}}>
+            style={{width:"100%",padding:"13px",borderRadius:14,background:`linear-gradient(135deg, ${accent}, ${accent}cc)`,border:"none",color:accentText,fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 16px ${accent}40`,display:"flex",alignItems:"center",justifyContent:"center",gap:10,letterSpacing:"0.01em"}}>
             🎡 Spin the Wheel — Let fate decide!
           </button>
         </div>
@@ -1160,7 +1167,7 @@
 
   // ── Plan My Day Modal ────────────────────────────────────────────────────────
   function PlanDayModal({tasks,categories,onAdd,onUpdate,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,defaultCat="personal",onClose}){
-    const {T,accent}=useTheme();
+    const {T,accent,accentText}=useTheme();
     const modalRef = useModalA11y(onClose);
     const today = todayStr();
     const [step,setStep]=useState(1);
@@ -1170,7 +1177,7 @@
 
     const inp={width:"100%",background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"};
     const lbl={fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,fontWeight:700,fontFamily:"'Nunito',sans-serif"};
-    const btnPrimary={background:accent,color:"#fff",border:"none",borderRadius:12,padding:"12px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 2px 8px ${accent}40`,flex:1};
+    const btnPrimary={background:accent,color:accentText,border:"none",borderRadius:12,padding:"12px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 2px 8px ${accent}40`,flex:1};
     const btnSecondary={background:"transparent",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"12px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif",flex:1};
 
     const activeTasks = tasks.filter(t=>t.status!=="Done");
@@ -1277,7 +1284,7 @@
                     <div key={t.id}>
                       <div onClick={()=>toggleToday(t)} style={{display:"flex",alignItems:"center",gap:10,background:included?accent+"14":T.card,border:`1.5px solid ${included?accent+"50":T.border}`,borderLeft:`4px solid ${cat?.color||accent}`,borderRadius:12,padding:"9px 12px",cursor:"pointer"}}>
                         <span style={{width:20,height:20,borderRadius:6,border:`2px solid ${included?accent:T.muted}`,background:included?accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                          {included&&<Icon name="Check" size={12} color="#fff"/>}
+                          {included&&<Icon name="Check" size={12} color={accentText}/>}
                         </span>
                         <span style={{flex:1,fontSize:13,color:T.text,fontWeight:included?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
                         {t.estMinutes
@@ -1329,7 +1336,7 @@
                   return(
                     <button key={t.id} onClick={()=>toggleTop(t)} disabled={disabled}
                       style={{display:"flex",alignItems:"center",gap:10,textAlign:"left",background:ranked?accent+"14":T.card,border:`1.5px solid ${ranked?accent+"50":T.border}`,borderRadius:12,padding:"9px 12px",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,fontFamily:"'Nunito Sans',sans-serif"}}>
-                      <span style={{width:22,height:22,borderRadius:"50%",background:ranked?accent:T.subtle,color:ranked?"#fff":T.muted,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ranked?t.topRank:""}</span>
+                      <span style={{width:22,height:22,borderRadius:"50%",background:ranked?accent:T.subtle,color:ranked?accentText:T.muted,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{ranked?t.topRank:""}</span>
                       <span style={{flex:1,fontSize:13,color:T.text,fontWeight:ranked?700:500}}>{t.title}</span>
                     </button>
                   );
@@ -3379,9 +3386,13 @@
       const theme=THEMES[themeId];
       const T=isDark?theme.dark:theme.light;
       const accent = typeof theme.accent==="object" ? (isDark?theme.accent.dark:theme.accent.light) : theme.accent;
-      return{T,accent};
+      const h=accent.replace("#","");
+      const hx=h.length===3?h.split("").map(c=>c+c).join(""):h;
+      const lum=0.299*parseInt(hx.slice(0,2),16)+0.587*parseInt(hx.slice(2,4),16)+0.114*parseInt(hx.slice(4,6),16);
+      const accentText=lum>185?"#1b1b1b":"#fff";
+      return{T,accent,accentText};
     }, [themeId,isDark]);
-    const {T,accent}=themeData;
+    const {T,accent,accentText}=themeData;
 
     useEffect(()=>{
       document.body.style.background=T.bg;
