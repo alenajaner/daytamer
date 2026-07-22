@@ -1291,9 +1291,9 @@
                           ? <span style={{fontSize:11,color:T.muted,flexShrink:0}}>{fmtMins(t.estMinutes)}</span>
                           : included&&<span style={{fontSize:11,color:"#f59e0b",fontWeight:700,flexShrink:0}}>No duration</span>}
                       </div>
-                      {included&&!t.estMinutes&&(
+                      {included&&(
                         <div style={{display:"flex",gap:6,flexWrap:"wrap",padding:"8px 4px 0 34px"}}>
-                          {EST_OPTIONS.map(m=><button key={m} onClick={()=>onUpdate(t.id,{estMinutes:m})} style={{border:"none",background:T.subtle,color:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
+                          {EST_OPTIONS.map(m=>{const sel=t.estMinutes===m;return <button key={m} onClick={()=>onUpdate(t.id,{estMinutes:m})} style={{border:`1.5px solid ${sel?accent:"transparent"}`,background:sel?accent+"22":T.subtle,color:sel?accent:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:sel?800:600}}>{EST_LABELS[m]}</button>;})}
                         </div>
                       )}
                     </div>
