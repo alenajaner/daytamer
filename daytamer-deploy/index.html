@@ -54,12 +54,12 @@
     slate: { name:"Slate", emoji:"🩶", accent:"#94a3b8",
       dark:  { bg:"#161b24", surface:"#1d2430", card:"#222b38", border:"#2e3a4a", text:"#c8d4e0", muted:"#8494a3", subtle:"#1e2935", navBg:"#161b24" },
       light: { bg:"#f1f5f9", surface:"#ffffff", card:"#e4eaf2", border:"#c0cdd8", text:"#1c2530", muted:"#576579", subtle:"#d8e2ec", navBg:"#ffffff" } },
-    midnight: { name:"Midnight", emoji:"🌙", accent:"#b79cf5",
-      dark:  { bg:"#16111f", surface:"#1e1629", card:"#251c33", border:"#342550", text:"#d8ccf0", muted:"#8e81b7", subtle:"#1f1730", navBg:"#16111f" },
-      light: { bg:"#f5f0ff", surface:"#ffffff", card:"#ede5ff", border:"#c4b0f0", text:"#1a1030", muted:"#6c4cac", subtle:"#ddd5f8", navBg:"#ffffff" } },
-    forest: { name:"Forest", emoji:"🌿", accent:"#4ade80",
-      dark:  { bg:"#101a13", surface:"#162019", card:"#1b2a1e", border:"#243d28", text:"#bce8c8", muted:"#559e69", subtle:"#162218", navBg:"#101a13" },
-      light: { bg:"#f0fdf4", surface:"#ffffff", card:"#dcfce7", border:"#a0d8b0", text:"#0d2614", muted:"#347545", subtle:"#bbf7d0", navBg:"#ffffff" } },
+    midnight: { name:"Midnight", emoji:"🌙", accent:"#8f8eb5",
+      dark:  { bg:"#1a1a24", surface:"#21212d", card:"#292936", border:"#3b3b4f", text:"#d0d0e0", muted:"#8887a8", subtle:"#232330", navBg:"#1a1a24" },
+      light: { bg:"#f3f3f7", surface:"#ffffff", card:"#e7e7ef", border:"#c2c2d4", text:"#24242f", muted:"#52516b", subtle:"#dcdce8", navBg:"#ffffff" } },
+    forest: { name:"Forest", emoji:"🌿", accent:"#849c7e",
+      dark:  { bg:"#1e241b", surface:"#262d22", card:"#2e362a", border:"#414a3b", text:"#d0d8c8", muted:"#8b9680", subtle:"#272e23", navBg:"#1e241b" },
+      light: { bg:"#f3f6f1", surface:"#ffffff", card:"#e4ecdf", border:"#b9cbb0", text:"#33402d", muted:"#607055", subtle:"#dbe6d4", navBg:"#ffffff" } },
     rose: { name:"Rose", emoji:"🌸", accent:"#fb7185",
       dark:  { bg:"#1c1018", surface:"#241520", card:"#2c1a26", border:"#42243a", text:"#ecc8d8", muted:"#b57593", subtle:"#261520", navBg:"#1c1018" },
       light: { bg:"#fff1f2", surface:"#ffffff", card:"#ffe4ec", border:"#f0a0b8", text:"#2e0d1c", muted:"#9e3a56", subtle:"#fecdd3", navBg:"#ffffff" } },
@@ -144,7 +144,7 @@
   const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   const DAYS_OF_WEEK = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const DEFAULT_CATEGORIES = [{id:"personal",name:"Personal",color:"#22c55e"},{id:"work",name:"Work",color:"#3b82f6"},{id:"health",name:"Health",color:"#f43f5e"},{id:"home",name:"Home",color:"#f59e0b"}];
+  const DEFAULT_CATEGORIES = [{id:"personal",name:"Personal",color:"#22c55e"},{id:"work",name:"Work",color:"#3b82f6"}];
   const DEFAULT_SORTS = [
     {id:"daily",name:"Daily Planning",levels:[{field:"dueDate",dir:"asc"},{field:"priority",dir:"asc"}]},
     {id:"quickwins",name:"Quick Wins",levels:[{field:"estMinutes",dir:"asc"},{field:"priority",dir:"asc"}]},
