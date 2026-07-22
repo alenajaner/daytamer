@@ -3389,7 +3389,7 @@
       const h=accent.replace("#","");
       const hx=h.length===3?h.split("").map(c=>c+c).join(""):h;
       const lum=0.299*parseInt(hx.slice(0,2),16)+0.587*parseInt(hx.slice(2,4),16)+0.114*parseInt(hx.slice(4,6),16);
-      const accentText=lum>185?"#1b1b1b":"#fff";
+      const accentText=T.accentText||(lum>185?"#1b1b1b":"#fff");
       return{T,accent,accentText};
     }, [themeId,isDark]);
     const {T,accent,accentText}=themeData;
