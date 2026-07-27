@@ -1703,6 +1703,7 @@
             </div>
           )}
           <div style={{display:"flex",gap:5,overflowX:"auto"}} className="hide-scrollbar">
+            {chip(filterCat.length===0,accent,()=>setFilterCat([]),"All")}
             {categories.map(c=>chip(filterCat.includes(c.id),c.color,()=>toggleArr(filterCat,setFilterCat,c.id),c.name))}
             {["Not Started","In Progress","Done"].map(s=>chip(filterStatus.includes(s),STATUS_COLORS[s],()=>toggleArr(filterStatus,setFilterStatus,s),s))}
           </div>
