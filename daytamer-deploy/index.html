@@ -1315,6 +1315,7 @@
                           {included&&<Icon name="Check" size={12} color={accentText}/>}
                         </span>
                         <span style={{flex:1,fontSize:13,color:T.text,fontWeight:included?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+                        {t.priority&&<span style={{fontSize:10,fontWeight:700,color:PRIORITY_COLORS[t.priority],background:PRIORITY_COLORS[t.priority]+"20",border:`1px solid ${PRIORITY_COLORS[t.priority]}40`,borderRadius:999,padding:"1px 7px",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>{t.priority}</span>}
                         {t.estMinutes
                           ? <span style={{fontSize:11,color:T.muted,flexShrink:0}}>{fmtMins(t.estMinutes)}</span>
                           : included&&<span style={{fontSize:11,color:"#f59e0b",fontWeight:700,flexShrink:0}}>No duration</span>}
