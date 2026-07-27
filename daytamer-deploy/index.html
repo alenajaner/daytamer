@@ -1197,7 +1197,7 @@
     includedIds.forEach(id=>workingIds.add(id));
     excludedIds.forEach(id=>workingIds.delete(id));
     const workingTasks = activeTasks.filter(t=>workingIds.has(t.id));
-    const topPicks = tasks.filter(t=>t.topRank&&t.topRankDate===today).sort((a,b)=>a.topRank-b.topRank);
+    const topPicks = workingTasks.filter(t=>t.topRank&&t.topRankDate===today).sort((a,b)=>a.topRank-b.topRank);
     const missingDuration = workingTasks.filter(t=>!t.estMinutes);
 
     const toggleToday=(t)=>{
@@ -1237,9 +1237,12 @@
     };
 
     const toggleTop=(t)=>{
-      if(t.topRank&&t.topRankDate===today){ onUpdate(t.id,{topRank:null,topRankDate:null}); return; }
-      if(topPicks.length>=3) return;
-      onUpdate(t.id,{topRank:topPicks.length+1,topRankDate:today});
+      const cur=topPicks.map(x=>x.id);
+      const isRanked=cur.includes(t.id);
+      if(!isRanked && cur.length>=3) return;
+      const next=isRanked?cur.filter(id=>id!==t.id):[...cur,t.id];
+      if(isRanked) onUpdate(t.id,{topRank:null,topRankDate:null});
+      next.forEach((id,idx)=>onUpdate(id,{topRank:idx+1,topRankDate:today}));
     };
 
     const [mTitle,setMTitle]=useState(""); const [mTime,setMTime]=useState(""); const [mMins,setMMins]=useState(30);
@@ -3526,7 +3529,7 @@
     const updateTask=(id,patch)=>setTasks(p=>p.map(x=>x.id===id?{...x,...patch,updatedAt:now()}:x));
     const changeStatus=(id,s)=>{
       const cur=tasks.find(t=>t.id===id);
-      updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""});
+      updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():"",...(s==="Done"?{topRank:null,topRankDate:null}:{})});
       clearTimeout(undoTimer.current);
       if(s==="Done"&&cur){
         setUndoInfo({id,prev:cur.status||"Not Started",title:cur.title});
