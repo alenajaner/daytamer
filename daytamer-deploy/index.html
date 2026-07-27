@@ -1468,6 +1468,7 @@
           {step===4&&(
             <div>
               <StepHeader n={4} title="Your schedule"/>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Tap a task to edit it. Tap 🔓 to lock a task at its time — the rest reschedule around it.</div>
               {!schedule
                 ? <div style={{color:T.muted,fontSize:13}}>Generating…</div>
                 : (()=>{
@@ -1500,12 +1501,13 @@
                           return(
                             <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderRadius:12,borderLeft:`4px solid ${cat?.color||accent}`,padding:"9px 12px",marginBottom:6}}>
                               <span style={{fontSize:12,color:"#7DCFCB",fontWeight:700,width:56,flexShrink:0}}>{formatTime(r.startTime)}</span>
-                              <div style={{flex:1,minWidth:0}}>
+                              <div onClick={()=>onEdit(t)} style={{flex:1,minWidth:0,cursor:"pointer"}}>
                                 <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:5}}>
-                                  {t.topRank&&t.topRankDate===today&&"⭐"}{r.locked&&"🔒"}{t.title}
+                                  {t.topRank&&t.topRankDate===today&&"⭐"}{t.title}
                                 </div>
                                 <div style={{fontSize:11,color:T.muted}}>{fmtMins(t.estMinutes)}</div>
                               </div>
+                              <button onClick={()=>onUpdate(t.id, r.locked?{scheduledTime:""}:{scheduledDate:today,scheduledTime:r.startTime})} title={r.locked?"Unlock — let the planner move this":"Lock at this time"} style={{background:r.locked?accent+"22":"transparent",border:`1.5px solid ${r.locked?accent:T.border}`,borderRadius:8,width:30,height:30,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{r.locked?"🔒":"🔓"}</button>
                             </div>
                           );
                         })}
