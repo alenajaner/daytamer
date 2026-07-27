@@ -770,9 +770,10 @@
     const [quickDate,setQuickDate]=useState("");
     const [quickTime,setQuickTime]=useState("");
     const [quickSchedMode,setQuickSchedMode]=useState("none"); // none | today | later
-    const overdue=tasks.filter(t=>t.status!=="Done"&&t.dueDate&&t.dueDate<today);
-    const dueToday=tasks.filter(t=>t.status!=="Done"&&t.dueDate===today);
-    const scheduledToday=tasks.filter(t=>t.scheduledDate===today).sort((a,b)=>a.scheduledTime>b.scheduledTime?1:-1);
+    const overdue=tasks.filter(t=>t.status!=="Done"&&((t.dueDate&&t.dueDate<today)||(t.scheduledDate&&t.scheduledDate<today)));
+    const overdueIds=new Set(overdue.map(t=>t.id));
+    const dueToday=tasks.filter(t=>t.status!=="Done"&&t.dueDate===today&&!overdueIds.has(t.id));
+    const scheduledToday=tasks.filter(t=>t.scheduledDate===today&&!overdueIds.has(t.id)).sort((a,b)=>a.scheduledTime>b.scheduledTime?1:-1);
     const totalActive=tasks.filter(t=>t.status!=="Done").length;
     const doneCnt=tasks.filter(t=>t.status==="Done").length;
     const totalAll=tasks.length;
