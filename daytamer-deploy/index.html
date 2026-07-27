@@ -1150,19 +1150,22 @@
 
     const placements=[], unfit=[];
     let cursor=dayStart, sinceBreak=0;
+    // A meeting/lunch (any reserved block we skip over) counts as a rest, so
+    // jumping past one resets the work counter — no break right after a meeting.
+    const jump = dur => { let block=overlapsReserved(cursor,dur); while(block){ cursor=block.end; sinceBreak=0; block=overlapsReserved(cursor,dur); } };
     for(const t of unplaced){
       const dur = t.estMinutes||0;
-      // "before": take the break as soon as the next task would blow the budget,
-      // even if that means breaking a little early (no overshoot, ever).
-      // "after" (default): let the current task run to completion first, then
-      // break — never splits a task, but can overshoot the block by up to one
-      // task's length.
+      // Move past any reserved block first, then decide on a break. This avoids
+      // inserting a cadence break right before idle time.
+      jump(dur);
+      // "before": break as soon as the next task would blow the work budget.
+      // "after" (default): let the task run to completion first, then break.
       const dueForBreak = breakCadence.mode==="before"
         ? (sinceBreak>0 && sinceBreak+dur>breakCadence.blockMins)
         : (sinceBreak>=breakCadence.blockMins);
-      if(dueForBreak){ cursor+=breakCadence.breakMins; sinceBreak=0; }
-      let block=overlapsReserved(cursor,dur);
-      while(block){ cursor=block.end; sinceBreak=0; block=overlapsReserved(cursor,dur); }
+      // Only take the cadence break if the task still fits contiguously after it;
+      // if a meeting/lunch is right ahead, skip it — that block is the rest.
+      if(dueForBreak && !overlapsReserved(cursor+breakCadence.breakMins,dur)){ cursor+=breakCadence.breakMins; sinceBreak=0; }
       if(cursor+dur>dayEnd){ unfit.push(t); continue; }
       placements.push({taskId:t.id, startTime:minsToTime(cursor), endTime:minsToTime(cursor+dur)});
       cursor+=dur; sinceBreak+=dur;
@@ -1518,7 +1521,10 @@
                     ].sort((a,b)=>a.startTime<b.startTime?-1:1);
                     const rows=[]; let prevEnd=null;
                     all.forEach(item=>{
-                      if(prevEnd&&timeToMins(item.startTime)>timeToMins(prevEnd)) rows.push({type:"break",mins:timeToMins(item.startTime)-timeToMins(prevEnd)});
+                      if(prevEnd&&timeToMins(item.startTime)>timeToMins(prevEnd)){
+                        const gap=timeToMins(item.startTime)-timeToMins(prevEnd);
+                        rows.push({type:gap===breakCadence.breakMins?"break":"free",mins:gap});
+                      }
                       rows.push({type:item.kind==="fixedbreak"?"fixedbreak":"task",locked:item.kind==="locked",...item});
                       prevEnd=item.endTime;
                     });
@@ -1526,6 +1532,7 @@
                       <>
                         {rows.map((r,i)=>{
                           if(r.type==="break") return <div key={i} style={{fontSize:11,color:T.muted,padding:"4px 0",textAlign:"center",fontStyle:"italic"}}>☕ {r.mins}m break</div>;
+                          if(r.type==="free") return <div key={i} style={{fontSize:11,color:T.muted,padding:"4px 0",textAlign:"center",fontStyle:"italic",opacity:0.6}}>· {fmtMins(r.mins)} free ·</div>;
                           if(r.type==="fixedbreak") return (
                             <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:T.subtle,borderRadius:12,borderLeft:`4px solid ${T.muted}`,padding:"9px 12px",marginBottom:6}}>
                               <span style={{fontSize:12,color:T.muted,fontWeight:700,width:56,flexShrink:0}}>{formatTime(r.startTime)}</span>
