@@ -2255,11 +2255,11 @@
             return dayBreaks.map(b=>{
               const bStart=timeToMins(b.time);
               const top=(bStart-dayStartMins)*pxPerMin;
-              const height=Math.max(16,b.mins*pxPerMin-4);
+              const height=Math.max(20,b.mins*pxPerMin-4);
               if(top<0||top>HOURS.length*SLOT_H) return null;
               return(
-                <div key={b.id} style={{position:"absolute",top:`${top+2}px`,left:66,right:8,height:`${height}px`,background:T.card,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"4px 8px",display:"flex",alignItems:"center",gap:6,pointerEvents:"none",zIndex:3,boxSizing:"border-box",overflow:"hidden"}}>
-                  <span style={{fontSize:11,fontWeight:700,color:T.muted,fontFamily:"'Nunito',sans-serif"}}>☕ {b.label||"Break"}</span>
+                <div key={b.id} style={{position:"absolute",top:`${top+2}px`,left:66,right:8,height:`${height}px`,background:"#f59e0b1e",border:"1.5px solid #f59e0b80",borderRadius:10,padding:"2px 8px",display:"flex",alignItems:"center",gap:6,pointerEvents:"none",zIndex:6,boxSizing:"border-box",overflow:"hidden"}}>
+                  <span style={{fontSize:11,fontWeight:800,color:"#b45309",fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap"}}>☕ {b.label||"Break"} · {b.mins}m</span>
                 </div>
               );
             });
