@@ -1121,7 +1121,7 @@
   const timeToMins = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
   const minsToTime = m => `${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
 
-  function buildDaySchedule({tasks, workHours, breakCadence, customBreaks=[]}){
+  function buildDaySchedule({tasks, workHours, breakCadence, customBreaks=[], manualOrder=[]}){
     const dayStart = workHours.start*60, dayEnd = workHours.end*60;
     const locked = tasks.filter(t=>t.scheduledTime).map(t=>{
       const start = timeToMins(t.scheduledTime);
@@ -1133,6 +1133,11 @@
     const reserved = [...locked.map(l=>({start:l.start,end:l.end})), ...fixedBreaks.map(b=>({start:b.start,end:b.end}))];
     const rank = t => (t.topRank && t.topRankDate===todayStr()) ? t.topRank : 99;
     const unplaced = tasks.filter(t=>!t.scheduledTime).sort((a,b)=>{
+      if(manualOrder.length){
+        const oa=manualOrder.indexOf(a.id), ob=manualOrder.indexOf(b.id);
+        const na=oa===-1?1e9:oa, nb=ob===-1?1e9:ob;
+        if(na!==nb) return na-nb;
+      }
       const rA=rank(a), rB=rank(b);
       if(rA!==rB) return rA-rB;
       const pA=PRIORITY_WEIGHT[a.priority]||2, pB=PRIORITY_WEIGHT[b.priority]||2;
@@ -1178,6 +1183,7 @@
     const [includedIds,setIncludedIds]=useState(()=>new Set());
     const [excludedIds,setExcludedIds]=useState(()=>new Set());
     const [schedule,setSchedule]=useState(null);
+    const [manualOrder,setManualOrder]=useState([]);
 
     const inp={width:"100%",background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"};
     const lbl={fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,fontWeight:700,fontFamily:"'Nunito',sans-serif"};
@@ -1257,8 +1263,18 @@
     const workingSignature = workingTasks.map(t=>`${t.id}:${t.estMinutes}:${t.scheduledTime||""}`).join(",");
     useEffect(()=>{
       if(step!==5) return;
-      setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence,customBreaks}));
-    }, [step, workingSignature, workHours.start, workHours.end, breakCadence.blockMins, breakCadence.breakMins, customBreaks]);
+      setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence,customBreaks,manualOrder}));
+    }, [step, workingSignature, workHours.start, workHours.end, breakCadence.blockMins, breakCadence.breakMins, customBreaks, manualOrder]);
+
+    const moveTask=(taskId,dir)=>{
+      const seq=(manualOrder.length?manualOrder:(schedule?schedule.placements.map(p=>p.taskId):[])).slice();
+      const i=seq.indexOf(taskId);
+      if(i===-1) return;
+      const j=i+dir;
+      if(j<0||j>=seq.length) return;
+      [seq[i],seq[j]]=[seq[j],seq[i]];
+      setManualOrder(seq);
+    };
 
     const confirmSchedule=()=>{
       if(!schedule) return;
@@ -1323,19 +1339,6 @@
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {EST_OPTIONS.map(m=><button key={m} onClick={()=>setNewTaskMins(m)} style={{border:`2px solid ${newTaskMins===m?accent:"transparent"}`,background:newTaskMins===m?accent+"22":T.subtle,color:newTaskMins===m?accent:T.muted,padding:"5px 10px",borderRadius:999,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:600}}>{EST_LABELS[m]}</button>)}
                 </div>
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:T.muted,cursor:newTaskMins?"pointer":"not-allowed",opacity:newTaskMins?1:0.5,fontFamily:"'Nunito Sans',sans-serif"}}>
-                  <input type="checkbox" disabled={!newTaskMins} checked={splitChunks} onChange={e=>setSplitChunks(e.target.checked)} style={{cursor:"pointer",accentColor:accent}}/>
-                  Split into smaller chunks
-                </label>
-                {splitChunks&&newTaskMins&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:12,color:T.muted}}>Chunks:</span>
-                    <button onClick={()=>setChunkCount(c=>Math.max(2,c-1))} style={{width:26,height:26,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:14}}>−</button>
-                    <span style={{fontSize:13,fontWeight:700,color:T.text,minWidth:16,textAlign:"center"}}>{chunkCount}</span>
-                    <button onClick={()=>setChunkCount(c=>Math.min(8,c+1))} style={{width:26,height:26,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:14}}>+</button>
-                    <span style={{fontSize:11,color:T.muted}}>≈{fmtMins(Math.round(newTaskMins/chunkCount))} each</span>
-                  </div>
-                )}
                 <button onClick={addNewToday} disabled={!newTaskTitle.trim()} style={{...btnPrimary,opacity:!newTaskTitle.trim()?0.5:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Icon name="Plus" size={16}/> Add</button>
               </div>
             </div>
@@ -1504,7 +1507,7 @@
           {step===5&&(
             <div>
               <StepHeader n={5} title="Your schedule"/>
-              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Tap a task to edit it. Tap 🔓 to lock a task at its time — the rest reschedule around it.</div>
+              <div style={{color:T.muted,fontSize:12,marginBottom:12,fontFamily:"'Nunito Sans',sans-serif"}}>Tap a task to edit it. Use ↑↓ to reorder, or 🔓 to lock one at its time — locked tasks stay put while the rest reschedule around them.</div>
               {!schedule
                 ? <div style={{color:T.muted,fontSize:13}}>Generating…</div>
                 : (()=>{
@@ -1543,6 +1546,10 @@
                                 </div>
                                 <div style={{fontSize:11,color:T.muted}}>{fmtMins(t.estMinutes)}</div>
                               </div>
+                              {!r.locked&&<div style={{display:"flex",flexDirection:"column",flexShrink:0}}>
+                                <button onClick={()=>moveTask(t.id,-1)} title="Move earlier" style={{background:"none",border:"none",cursor:"pointer",padding:0,height:15,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="ChevronUp" size={15} color={T.muted}/></button>
+                                <button onClick={()=>moveTask(t.id,1)} title="Move later" style={{background:"none",border:"none",cursor:"pointer",padding:0,height:15,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="ChevronDown" size={15} color={T.muted}/></button>
+                              </div>}
                               <button onClick={()=>onUpdate(t.id, r.locked?{scheduledTime:""}:{scheduledDate:today,scheduledTime:r.startTime})} title={r.locked?"Unlock — let the planner move this":"Lock at this time"} style={{background:r.locked?accent+"22":"transparent",border:`1.5px solid ${r.locked?accent:T.border}`,borderRadius:8,width:30,height:30,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{r.locked?"🔒":"🔓"}</button>
                             </div>
                           );
