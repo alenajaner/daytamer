@@ -3219,6 +3219,8 @@
     const [wheelWinner,setWheelWinner]=useState(null);
     const [dayTarget,setDayTarget]=useState(null);
     const [storageError,setStorageError]=useState(false);
+    const [undoInfo,setUndoInfo]=useState(null);
+    const undoTimer=useRef(null);
     useEffect(()=>{
       const onErr=()=>{ setStorageError(true); setTimeout(()=>setStorageError(false),4000); };
       window.addEventListener("dt-storage-error",onErr);
@@ -3405,6 +3407,21 @@
     const saveTask=t=>setTasks(p=>p.map(x=>x.id===t.id?{...t,updatedAt:now()}:x));
     const deleteTask=id=>{setTasks(p=>p.filter(x=>x.id!==id));setDeletedIds(p=>[...new Set([...p,id])]);};
     const updateTask=(id,patch)=>setTasks(p=>p.map(x=>x.id===id?{...x,...patch,updatedAt:now()}:x));
+    const changeStatus=(id,s)=>{
+      const cur=tasks.find(t=>t.id===id);
+      updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""});
+      clearTimeout(undoTimer.current);
+      if(s==="Done"&&cur){
+        setUndoInfo({id,prev:cur.status||"Not Started",title:cur.title});
+        undoTimer.current=setTimeout(()=>setUndoInfo(null),5000);
+      }else setUndoInfo(null);
+    };
+    const undoComplete=()=>{
+      if(!undoInfo)return;
+      clearTimeout(undoTimer.current);
+      updateTask(undoInfo.id,{status:undoInfo.prev,completedAt:""});
+      setUndoInfo(null);
+    };
     const deleteCategory=id=>{
       const fallback=categories.find(x=>x.id!==id)?.id||"";
       if(defaultCat===id)setDefaultCat(fallback);
@@ -3542,8 +3559,8 @@
           {/* Content */}
           <div style={{flex:1,overflow:"hidden",background:T.bg}}>
             {tab==="goals"&&<GoalsTab goals={goals} onGoalsChange={setGoals} tasks={tasks} onAddTask={addTask} onEditTask={setEditTask} categories={categories} defaultCat={defaultCat}/>}
-            {tab==="today"&&<TodayTab goals={goals} tasks={tasks} categories={categories} onEdit={setEditTask} onStatusChange={(id,s)=>{updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""})}} onGoToDay={(t)=>{if(t==="list")setTab("list");else{setDayTarget(todayStr());setTab("day");}}} onGoToGoals={()=>setTab("goals")} onSpin={()=>setShowWheel(true)} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}} onAddTask={addTask} onPlanDay={()=>setShowPlanDay(true)}/>}
-            {tab==="list"&&<ListTab tasks={tasks} categories={categories} onEdit={setEditTask} doneVis={doneVis} defaultCat={defaultCat} savedFilters={savedFilters} onSaveFilters={setSavedFilters} onStatusChange={(id,s)=>{updateTask(id,{status:s,completedAt:s==="Done"?new Date().toISOString():""})}} onAdd={addTask} savedSorts={savedSorts} onSaveSorts={setSavedSorts} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}}/>}
+            {tab==="today"&&<TodayTab goals={goals} tasks={tasks} categories={categories} onEdit={setEditTask} onStatusChange={changeStatus} onGoToDay={(t)=>{if(t==="list")setTab("list");else{setDayTarget(todayStr());setTab("day");}}} onGoToGoals={()=>setTab("goals")} onSpin={()=>setShowWheel(true)} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}} onAddTask={addTask} onPlanDay={()=>setShowPlanDay(true)}/>}
+            {tab==="list"&&<ListTab tasks={tasks} categories={categories} onEdit={setEditTask} doneVis={doneVis} defaultCat={defaultCat} savedFilters={savedFilters} onSaveFilters={setSavedFilters} onStatusChange={changeStatus} onAdd={addTask} savedSorts={savedSorts} onSaveSorts={setSavedSorts} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}}/>}
             {tab==="day"&&<DayTab tasks={tasks} categories={categories} onUpdate={updateTask} onEdit={setEditTask} onAdd={addTask} defaultCat={defaultCat} initialDate={dayTarget} dayHours={dayHours} slotMins={slotMins}/>}
             {tab==="week"&&<WeekTab tasks={tasks} categories={categories} onDayClick={handleDayClick} onAdd={addTask} defaultCat={defaultCat}/>}
             {tab==="month"&&<MonthTab tasks={tasks} categories={categories} onDayClick={handleDayClick} onAdd={addTask} defaultCat={defaultCat} onClearSchedule={()=>setTasks(p=>p.map(t=>({...t,scheduledDate:"",scheduledTime:""})))} />}
@@ -3568,6 +3585,13 @@
           {showSettings&&<SettingsPanel categories={categories} onCategoriesChange={setCategories} onDeleteCategory={deleteCategory} tasks={tasks} dayHours={dayHours} onDayHoursChange={setDayHours} slotMins={slotMins} onSlotMinsChange={setSlotMins} doneVis={doneVis} onDoneVisChange={setDoneVis} defaultCat={defaultCat} onDefaultCatChange={setDefaultCat} syncKey={syncKey} onSyncKeyChange={setSyncKey} syncStatus={syncStatus} onPullSync={async()=>{await pushSync();await pullSync();}}
             onImport={imported=>{setTasks(imported);setShowSettings(false);}} onClose={()=>setShowSettings(false)}
             themeId={themeId} isDark={isDark} onThemeChange={setThemeId} onModeChange={setIsDark}/>}
+          {undoInfo&&(
+            <div style={{position:"fixed",bottom:76,left:"50%",transform:"translateX(-50%)",zIndex:80,display:"flex",alignItems:"center",gap:12,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"10px 14px",boxShadow:"0 6px 24px rgba(0,0,0,0.28)",maxWidth:"calc(100% - 32px)"}}>
+              <Icon name="Check" size={15} color="#4ade80"/>
+              <span style={{fontSize:13,color:T.text,fontWeight:600,fontFamily:"'Nunito Sans',sans-serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:180}}>Completed “{undoInfo.title}”</span>
+              <button onClick={undoComplete} style={{background:"none",border:"none",color:accent,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"2px 4px",flexShrink:0}}>Undo</button>
+            </div>
+          )}
         </div>
       </ThemeCtx.Provider>
     );
