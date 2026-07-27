@@ -982,10 +982,11 @@
   }
 
   // ── Task Modal ────────────────────────────────────────────────────────────────
-  function TaskModal({task,categories,onSave,onDelete,onClose}){
-    const {T,accent}=useTheme();
+  function TaskModal({task,categories,onSave,onDelete,onSplit,onClose}){
+    const {T,accent,accentText}=useTheme();
     const modalRef = useModalA11y(onClose);
     const [t,setT]=useState({assignedTo:"Me",...task});
+    const [splitN,setSplitN]=useState(2);
     const set=(k,v)=>setT(p=>({...p,[k]:v}));
     const inp={width:"100%",background:T.card,color:T.text,borderRadius:12,padding:"10px 14px",fontSize:14,border:`1.5px solid ${T.border}`,outline:"none",fontFamily:"'Nunito Sans',sans-serif"};
     const lbl={fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,fontWeight:700,fontFamily:"'Nunito',sans-serif"};
@@ -1046,6 +1047,19 @@
               <span style={{fontSize:12,color:T.muted}}>{!EST_OPTIONS.includes(t.estMinutes)&&t.estMinutes?fmtMins(t.estMinutes):"e.g. 75 = 1h 15m"}</span>
             </div>
           </div>
+          {task.id&&onSplit&&t.estMinutes>0&&(
+            <div>
+              <div style={lbl}>Split into chunks</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <button onClick={()=>setSplitN(c=>Math.max(2,c-1))} style={{width:30,height:30,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:16}}>−</button>
+                <span style={{fontSize:14,fontWeight:700,color:T.text,minWidth:18,textAlign:"center"}}>{splitN}</span>
+                <button onClick={()=>setSplitN(c=>Math.min(8,c+1))} style={{width:30,height:30,borderRadius:8,border:`1.5px solid ${T.border}`,background:T.card,color:T.text,cursor:"pointer",fontWeight:700,fontSize:16}}>+</button>
+                <span style={{fontSize:12,color:T.muted}}>≈{fmtMins(Math.round(t.estMinutes/splitN))} each</span>
+                <button onClick={()=>onSplit(t,splitN)} style={{marginLeft:"auto",background:accent,color:accentText,border:"none",borderRadius:10,padding:"8px 16px",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>Split</button>
+              </div>
+              <div style={{fontSize:11,color:T.muted,marginTop:6,fontFamily:"'Nunito Sans',sans-serif"}}>Replaces this task with {splitN} smaller tasks.</div>
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -3527,6 +3541,19 @@
       setEditTask(null);
     };
     const handleDelete=id=>{deleteTask(id);setEditTask(null);};
+    const handleSplit=(task,n)=>{
+      const total=task.estMinutes||0;
+      if(!total||n<2){setEditTask(null);return;}
+      const per=Math.round(total/n);
+      const chunks=[];
+      for(let i=1;i<=n;i++){
+        const mins=i===n?(total-per*(n-1)):per;
+        chunks.push({...task,id:uid(),title:`${task.title} (${i}/${n})`,estMinutes:mins,scheduledTime:"",status:"Not Started",completedAt:"",repeat:"",repeatGroupId:"",topRank:null,topRankDate:null,updatedAt:now()});
+      }
+      setTasks(p=>[...p.filter(x=>x.id!==task.id),...chunks]);
+      setDeletedIds(p=>[...new Set([...p,task.id])]);
+      setEditTask(null);
+    };
     const handleDayClick=d=>{setDayTarget(d);setTab("day");};
     const handleGoToDay=()=>{setDayTarget(todayStr());setTab("day");};
 
@@ -3630,7 +3657,7 @@
 
           {focusTask&&<FocusMode task={focusTask} onDone={completed=>{updateTask(focusTask.id,{status:completed?"Done":"Not Started"});setFocusTask(null);}} onGiveUp={()=>setFocusTask(null)}/>}
           {showWheel&&<SpinWheel tasks={tasks} categories={categories} onClose={()=>{setShowWheel(false);setWheelWinner(null);}} onResult={id=>{updateTask(id,{status:"In Progress"});setWheelWinner(tasks.find(t=>t.id===id));}} onFocus={w=>{setShowWheel(false);setFocusTask(w||wheelWinner);}} />}
-          {editTask&&<TaskModal task={editTask} categories={categories} onSave={handleSave} onDelete={handleDelete} onClose={()=>setEditTask(null)}/>}
+          {editTask&&<TaskModal task={editTask} categories={categories} onSave={handleSave} onDelete={handleDelete} onSplit={handleSplit} onClose={()=>setEditTask(null)}/>}
           {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} onEdit={setEditTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} customBreaks={customBreaks} onCustomBreaksChange={setCustomBreaks} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)}/>}
           {showSettings&&<SettingsPanel categories={categories} onCategoriesChange={setCategories} onDeleteCategory={deleteCategory} tasks={tasks} dayHours={dayHours} onDayHoursChange={setDayHours} slotMins={slotMins} onSlotMinsChange={setSlotMins} doneVis={doneVis} onDoneVisChange={setDoneVis} defaultCat={defaultCat} onDefaultCatChange={setDefaultCat} syncKey={syncKey} onSyncKeyChange={setSyncKey} syncStatus={syncStatus} onPullSync={async()=>{await pushSync();await pullSync();}}
             onImport={imported=>{setTasks(imported);setShowSettings(false);}} onClose={()=>setShowSettings(false)}
