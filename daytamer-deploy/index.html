@@ -3315,7 +3315,9 @@
     const [dayTarget,setDayTarget]=useState(null);
     const [storageError,setStorageError]=useState(false);
     const [undoInfo,setUndoInfo]=useState(null);
+    const [flashMsg,setFlashMsg]=useState("");
     const undoTimer=useRef(null);
+    const flashTimer=useRef(null);
     useEffect(()=>{
       const onErr=()=>{ setStorageError(true); setTimeout(()=>setStorageError(false),4000); };
       window.addEventListener("dt-storage-error",onErr);
@@ -3583,11 +3585,14 @@
       const chunks=[];
       for(let i=1;i<=n;i++){
         const mins=i===n?(total-per*(n-1)):per;
-        chunks.push({...task,id:uid(),title:`${task.title} (${i}/${n})`,estMinutes:mins,scheduledTime:"",status:"Not Started",completedAt:"",repeat:"",repeatGroupId:"",topRank:null,topRankDate:null,updatedAt:now()});
+        chunks.push({...task,id:uid(),title:`${task.title} (${i}/${n})`,estMinutes:mins,scheduledDate:"",scheduledTime:"",status:"Not Started",completedAt:"",repeat:"",repeatGroupId:"",topRank:null,topRankDate:null,updatedAt:now()});
       }
       setTasks(p=>[...p.filter(x=>x.id!==task.id),...chunks]);
       setDeletedIds(p=>[...new Set([...p,task.id])]);
       setEditTask(null);
+      setFlashMsg(`Split into ${n} tasks — find them in your List`);
+      clearTimeout(flashTimer.current);
+      flashTimer.current=setTimeout(()=>setFlashMsg(""),4500);
     };
     const handleDayClick=d=>{setDayTarget(d);setTab("day");};
     const handleGoToDay=()=>{setDayTarget(todayStr());setTab("day");};
@@ -3702,6 +3707,12 @@
               <Icon name="Check" size={15} color="#4ade80"/>
               <span style={{fontSize:13,color:T.text,fontWeight:600,fontFamily:"'Nunito Sans',sans-serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:180}}>Completed “{undoInfo.title}”</span>
               <button onClick={undoComplete} style={{background:"none",border:"none",color:accent,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"2px 4px",flexShrink:0}}>Undo</button>
+            </div>
+          )}
+          {flashMsg&&(
+            <div style={{position:"fixed",bottom:76,left:"50%",transform:"translateX(-50%)",zIndex:80,display:"flex",alignItems:"center",gap:10,background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"10px 14px",boxShadow:"0 6px 24px rgba(0,0,0,0.28)",maxWidth:"calc(100% - 32px)"}}>
+              <Icon name="Check" size={15} color="#4ade80"/>
+              <span style={{fontSize:13,color:T.text,fontWeight:600,fontFamily:"'Nunito Sans',sans-serif"}}>{flashMsg}</span>
             </div>
           )}
         </div>
