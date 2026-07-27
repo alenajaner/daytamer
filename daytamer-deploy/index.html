@@ -2122,6 +2122,26 @@
     const occupiedSlots=getOccupied();
     const dayBreaks=(customBreaks||[]).filter(b=>b.time&&b.mins>0&&(!b.date||b.date===date));
 
+    const timelineRef=useRef(null);
+    const scrolledRef=useRef(false);
+    const isToday=date===todayStr();
+    const [nowTick,setNowTick]=useState(()=>Date.now());
+    useEffect(()=>{
+      const id=setInterval(()=>setNowTick(Date.now()),60000);
+      return ()=>clearInterval(id);
+    },[]);
+    useEffect(()=>{ scrolledRef.current=false; },[date]);
+    useEffect(()=>{
+      if(!isToday||scrolledRef.current||!timelineRef.current) return;
+      const now=new Date();
+      const nowMins=now.getHours()*60+now.getMinutes();
+      const dayStartMins=timeToMins(HOURS[0]?.value||"00:00");
+      const pxPerMin=SLOT_H/slotMins;
+      const top=(nowMins-dayStartMins)*pxPerMin;
+      timelineRef.current.scrollTop=Math.max(0,top-timelineRef.current.clientHeight/3);
+      scrolledRef.current=true;
+    });
+
     const prevDay=()=>{const d=new Date(date+"T00:00:00");d.setDate(d.getDate()-1);setDate(d.toISOString().slice(0,10));};
     const nextDay=()=>{const d=new Date(date+"T00:00:00");d.setDate(d.getDate()+1);setDate(d.toISOString().slice(0,10));};
 
@@ -2161,10 +2181,26 @@
     const SingleTimeline = () => {
       const totalH = HOURS.length * SLOT_H;
       return (
-      <div style={{flex:1,overflowY:"auto",position:"relative"}}>
+      <div ref={timelineRef} style={{flex:1,overflowY:"auto",position:"relative"}}>
 
         {/* Grid — fixed height rows, time labels only */}
         <div style={{position:"relative",height:`${totalH}px`}}>
+          {isToday&&(()=>{
+            const now=new Date(nowTick);
+            const nowMins=now.getHours()*60+now.getMinutes();
+            const dayStartMins=timeToMins(HOURS[0]?.value||"00:00");
+            const pxPerMin=SLOT_H/slotMins;
+            const top=(nowMins-dayStartMins)*pxPerMin;
+            if(top<0||top>totalH) return null;
+            return(
+              <div style={{position:"absolute",top:`${top}px`,left:0,right:0,zIndex:9,display:"flex",alignItems:"center",pointerEvents:"none"}}>
+                <span style={{width:62,flexShrink:0,paddingRight:6,textAlign:"right"}}>
+                  <span style={{width:7,height:7,borderRadius:"50%",background:"#ef4444",display:"inline-block"}}/>
+                </span>
+                <div style={{flex:1,height:2,background:"#ef4444"}}/>
+              </div>
+            );
+          })()}
           {HOURS.map((h,idx)=>{
             const isTapTarget=selectedTask&&!occupiedSlots.has(idx)&&!getTaskAtSlot(h.value);
             const isSlotOpen=slotPicker===h.value;
@@ -2456,7 +2492,7 @@
             </div>
           )}
 
-          {splitView ? <SplitTimeline/> : <SingleTimeline/>}
+          {splitView ? SplitTimeline() : SingleTimeline()}
         </div>
         {/* Floating + button */}
         <button onClick={()=>setQuickCreate({date,time:""})}
