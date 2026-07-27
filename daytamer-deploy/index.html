@@ -1127,7 +1127,7 @@
       const start = timeToMins(t.scheduledTime);
       return {task:t, start, end:start+(t.estMinutes||0)};
     }).sort((a,b)=>a.start-b.start);
-    const fixedBreaks = customBreaks.filter(b=>b.time&&b.mins>0).map(b=>{
+    const fixedBreaks = customBreaks.filter(b=>b.time&&b.mins>0&&(!b.date||b.date===todayStr())).map(b=>{
       const start=timeToMins(b.time); return {start, end:start+b.mins, label:b.label||"Break"};
     }).sort((a,b)=>a.start-b.start);
     const reserved = [...locked.map(l=>({start:l.start,end:l.end})), ...fixedBreaks.map(b=>({start:b.start,end:b.end}))];
@@ -1173,7 +1173,7 @@
   }
 
   // ── Plan My Day Modal ────────────────────────────────────────────────────────
-  function PlanDayModal({tasks,categories,onAdd,onUpdate,onEdit,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,customBreaks=[],onCustomBreaksChange,defaultCat="personal",onClose}){
+  function PlanDayModal({tasks,categories,onAdd,onUpdate,onEdit,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,customBreaks=[],onCustomBreaksChange,defaultCat="personal",onClose,onScheduled}){
     const {T,accent,accentText}=useTheme();
     const modalRef = useModalA11y(onClose);
     const today = todayStr();
@@ -1292,7 +1292,12 @@
     const confirmSchedule=()=>{
       if(!schedule) return;
       schedule.placements.forEach(p=>onUpdate(p.taskId,{scheduledDate:today,scheduledTime:p.startTime}));
+      if(schedule.manualBreaks&&schedule.manualBreaks.length){
+        const newBreaks=schedule.manualBreaks.map(mb=>({id:uid(),label:"Break",time:mb.startTime,mins:timeToMins(mb.endTime)-timeToMins(mb.startTime),date:today}));
+        onCustomBreaksChange([...customBreaks,...newBreaks]);
+      }
       onClose();
+      onScheduled&&onScheduled();
     };
 
     const canNext = step===1 ? (workingTasks.length>0 && missingDuration.length===0) : true;
@@ -2065,7 +2070,7 @@
     return ASSIGNEE_COLORS[idx % ASSIGNEE_COLORS.length];
   }
 
-  function DayTab({tasks,categories,onUpdate,onEdit,onAdd,defaultCat="personal",initialDate,dayHours,slotMins=15}){
+  function DayTab({tasks,categories,onUpdate,onEdit,onAdd,defaultCat="personal",initialDate,dayHours,slotMins=15,customBreaks=[]}){
     const {T,accent}=useTheme();
     const [date,setDate]=useState(initialDate||todayStr());
     const [dragging,setDragging]=useState(null);
@@ -2115,6 +2120,7 @@
       return set;
     };
     const occupiedSlots=getOccupied();
+    const dayBreaks=(customBreaks||[]).filter(b=>b.time&&b.mins>0&&(!b.date||b.date===date));
 
     const prevDay=()=>{const d=new Date(date+"T00:00:00");d.setDate(d.getDate()-1);setDate(d.toISOString().slice(0,10));};
     const nextDay=()=>{const d=new Date(date+"T00:00:00");d.setDate(d.getDate()+1);setDate(d.toISOString().slice(0,10));};
@@ -2206,6 +2212,22 @@
               </div>
             );
           })}
+          {/* Break blocks — fixed/scheduled breaks, non-interactive */}
+          {(()=>{
+            const dayStartMins=timeToMins(HOURS[0]?.value||"00:00");
+            const pxPerMin=SLOT_H/slotMins;
+            return dayBreaks.map(b=>{
+              const bStart=timeToMins(b.time);
+              const top=(bStart-dayStartMins)*pxPerMin;
+              const height=Math.max(16,b.mins*pxPerMin-4);
+              if(top<0||top>HOURS.length*SLOT_H) return null;
+              return(
+                <div key={b.id} style={{position:"absolute",top:`${top+2}px`,left:66,right:8,height:`${height}px`,background:T.card,border:`1.5px dashed ${T.border}`,borderRadius:10,padding:"4px 8px",display:"flex",alignItems:"center",gap:6,pointerEvents:"none",zIndex:3,boxSizing:"border-box",overflow:"hidden"}}>
+                  <span style={{fontSize:11,fontWeight:700,color:T.muted,fontFamily:"'Nunito',sans-serif"}}>☕ {b.label||"Break"}</span>
+                </div>
+              );
+            });
+          })()}
           {/* Task blocks — absolutely positioned, collision-aware columns */}
           {(()=>{
             const timedTasks=scheduled.filter(t=>t.scheduledTime).map(t=>({
@@ -3697,7 +3719,7 @@
             {tab==="goals"&&<GoalsTab goals={goals} onGoalsChange={setGoals} tasks={tasks} onAddTask={addTask} onEditTask={setEditTask} categories={categories} defaultCat={defaultCat}/>}
             {tab==="today"&&<TodayTab goals={goals} tasks={tasks} categories={categories} onEdit={setEditTask} onStatusChange={changeStatus} onGoToDay={(t)=>{if(t==="list")setTab("list");else{setDayTarget(todayStr());setTab("day");}}} onGoToGoals={()=>setTab("goals")} onSpin={()=>setShowWheel(true)} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}} onAddTask={addTask} onPlanDay={()=>setShowPlanDay(true)}/>}
             {tab==="list"&&<ListTab tasks={tasks} categories={categories} onEdit={setEditTask} doneVis={doneVis} defaultCat={defaultCat} savedFilters={savedFilters} onSaveFilters={setSavedFilters} onStatusChange={changeStatus} onAdd={addTask} savedSorts={savedSorts} onSaveSorts={setSavedSorts} onFocus={t=>{updateTask(t.id,{status:"In Progress"});setFocusTask(t);}}/>}
-            {tab==="day"&&<DayTab tasks={tasks} categories={categories} onUpdate={updateTask} onEdit={setEditTask} onAdd={addTask} defaultCat={defaultCat} initialDate={dayTarget} dayHours={dayHours} slotMins={slotMins}/>}
+            {tab==="day"&&<DayTab tasks={tasks} categories={categories} onUpdate={updateTask} onEdit={setEditTask} onAdd={addTask} defaultCat={defaultCat} initialDate={dayTarget} dayHours={dayHours} slotMins={slotMins} customBreaks={customBreaks}/>}
             {tab==="week"&&<WeekTab tasks={tasks} categories={categories} onDayClick={handleDayClick} onAdd={addTask} defaultCat={defaultCat}/>}
             {tab==="month"&&<MonthTab tasks={tasks} categories={categories} onDayClick={handleDayClick} onAdd={addTask} defaultCat={defaultCat} onClearSchedule={()=>setTasks(p=>p.map(t=>({...t,scheduledDate:"",scheduledTime:""})))} />}
           </div>
@@ -3717,7 +3739,7 @@
           {focusTask&&<FocusMode task={focusTask} onDone={completed=>{updateTask(focusTask.id,{status:completed?"Done":"Not Started"});setFocusTask(null);}} onGiveUp={()=>setFocusTask(null)}/>}
           {showWheel&&<SpinWheel tasks={tasks} categories={categories} onClose={()=>{setShowWheel(false);setWheelWinner(null);}} onResult={id=>{updateTask(id,{status:"In Progress"});setWheelWinner(tasks.find(t=>t.id===id));}} onFocus={w=>{setShowWheel(false);setFocusTask(w||wheelWinner);}} />}
           {editTask&&<TaskModal task={editTask} categories={categories} onSave={handleSave} onDelete={handleDelete} onSplit={handleSplit} onClose={()=>setEditTask(null)}/>}
-          {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} onEdit={setEditTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} customBreaks={customBreaks} onCustomBreaksChange={setCustomBreaks} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)}/>}
+          {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} onEdit={setEditTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} customBreaks={customBreaks} onCustomBreaksChange={setCustomBreaks} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)} onScheduled={handleGoToDay}/>}
           {showSettings&&<SettingsPanel categories={categories} onCategoriesChange={setCategories} onDeleteCategory={deleteCategory} tasks={tasks} dayHours={dayHours} onDayHoursChange={setDayHours} slotMins={slotMins} onSlotMinsChange={setSlotMins} doneVis={doneVis} onDoneVisChange={setDoneVis} defaultCat={defaultCat} onDefaultCatChange={setDefaultCat} syncKey={syncKey} onSyncKeyChange={setSyncKey} syncStatus={syncStatus} onPullSync={async()=>{await pushSync();await pullSync();}}
             onImport={imported=>{setTasks(imported);setShowSettings(false);}} onClose={()=>setShowSettings(false)}
             themeId={themeId} isDark={isDark} onThemeChange={setThemeId} onModeChange={setIsDark}/>}
