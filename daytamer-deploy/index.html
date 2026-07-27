@@ -1123,12 +1123,16 @@
   const timeToMins = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
   const minsToTime = m => `${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
 
-  function buildDaySchedule({tasks, workHours, breakCadence}){
+  function buildDaySchedule({tasks, workHours, breakCadence, customBreaks=[]}){
     const dayStart = workHours.start*60, dayEnd = workHours.end*60;
     const locked = tasks.filter(t=>t.scheduledTime).map(t=>{
       const start = timeToMins(t.scheduledTime);
       return {task:t, start, end:start+(t.estMinutes||0)};
     }).sort((a,b)=>a.start-b.start);
+    const fixedBreaks = customBreaks.filter(b=>b.time&&b.mins>0).map(b=>{
+      const start=timeToMins(b.time); return {start, end:start+b.mins, label:b.label||"Break"};
+    }).sort((a,b)=>a.start-b.start);
+    const reserved = [...locked.map(l=>({start:l.start,end:l.end})), ...fixedBreaks.map(b=>({start:b.start,end:b.end}))];
     const rank = t => (t.topRank && t.topRankDate===todayStr()) ? t.topRank : 99;
     const unplaced = tasks.filter(t=>!t.scheduledTime).sort((a,b)=>{
       const rA=rank(a), rB=rank(b);
@@ -1139,7 +1143,7 @@
       if(dA!==dB) return dA<dB?-1:1;
       return 0;
     });
-    const overlapsLocked = (pos,dur) => locked.find(l=>pos<l.end && pos+dur>l.start);
+    const overlapsReserved = (pos,dur) => reserved.find(l=>pos<l.end && pos+dur>l.start);
 
     const placements=[], unfit=[];
     let cursor=dayStart, sinceBreak=0;
@@ -1154,20 +1158,21 @@
         ? (sinceBreak>0 && sinceBreak+dur>breakCadence.blockMins)
         : (sinceBreak>=breakCadence.blockMins);
       if(dueForBreak){ cursor+=breakCadence.breakMins; sinceBreak=0; }
-      let block=overlapsLocked(cursor,dur);
-      while(block){ cursor=block.end; sinceBreak=0; block=overlapsLocked(cursor,dur); }
+      let block=overlapsReserved(cursor,dur);
+      while(block){ cursor=block.end; sinceBreak=0; block=overlapsReserved(cursor,dur); }
       if(cursor+dur>dayEnd){ unfit.push(t); continue; }
       placements.push({taskId:t.id, startTime:minsToTime(cursor), endTime:minsToTime(cursor+dur)});
       cursor+=dur; sinceBreak+=dur;
     }
     return {
       placements, unfit,
-      locked: locked.map(l=>({taskId:l.task.id, startTime:minsToTime(l.start), endTime:minsToTime(l.end)}))
+      locked: locked.map(l=>({taskId:l.task.id, startTime:minsToTime(l.start), endTime:minsToTime(l.end)})),
+      breaks: fixedBreaks.map(b=>({startTime:minsToTime(b.start), endTime:minsToTime(b.end), label:b.label}))
     };
   }
 
   // ── Plan My Day Modal ────────────────────────────────────────────────────────
-  function PlanDayModal({tasks,categories,onAdd,onUpdate,onEdit,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,defaultCat="personal",onClose}){
+  function PlanDayModal({tasks,categories,onAdd,onUpdate,onEdit,workHours,onWorkHoursChange,breakCadence,onBreakCadenceChange,customBreaks=[],onCustomBreaksChange,defaultCat="personal",onClose}){
     const {T,accent,accentText}=useTheme();
     const modalRef = useModalA11y(onClose);
     const today = todayStr();
@@ -1240,14 +1245,22 @@
     };
     const meetings = workingTasks.filter(t=>t.scheduledTime);
 
+    const [bLabel,setBLabel]=useState(""); const [bTime,setBTime]=useState(""); const [bMins,setBMins]=useState(60);
+    const addBreak=()=>{
+      if(!bTime) return;
+      onCustomBreaksChange([...customBreaks,{id:uid(),label:bLabel.trim()||"Break",time:bTime,mins:bMins}]);
+      setBLabel(""); setBTime("");
+    };
+    const removeBreak=id=>onCustomBreaksChange(customBreaks.filter(b=>b.id!==id));
+
     // Auto-(re)generate whenever the working set, hours, or break settings change
     // while on the results step — so removing an unfit task live-updates the plan
     // instead of requiring a manual re-run.
     const workingSignature = workingTasks.map(t=>`${t.id}:${t.estMinutes}:${t.scheduledTime||""}`).join(",");
     useEffect(()=>{
       if(step!==4) return;
-      setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence}));
-    }, [step, workingSignature, workHours.start, workHours.end, breakCadence.blockMins, breakCadence.breakMins]);
+      setSchedule(buildDaySchedule({tasks:workingTasks,workHours,breakCadence,customBreaks}));
+    }, [step, workingSignature, workHours.start, workHours.end, breakCadence.blockMins, breakCadence.breakMins, customBreaks]);
 
     const confirmSchedule=()=>{
       if(!schedule) return;
@@ -1390,6 +1403,29 @@
                   <div style={{fontSize:11,color:T.muted,marginTop:2}}>Take the break before starting — never runs over, may break early</div>
                 </button>
               </div>
+              <div style={lbl}>Scheduled breaks</div>
+              <div style={{color:T.muted,fontSize:11,marginBottom:8,fontFamily:"'Nunito Sans',sans-serif"}}>Reserve fixed times (lunch, coffee) — tasks schedule around them.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                <input value={bLabel} onChange={e=>setBLabel(e.target.value)} placeholder="e.g. Lunch" style={inp}/>
+                <div style={{display:"flex",gap:8}}>
+                  <input type="time" value={bTime} onChange={e=>setBTime(e.target.value)} style={{...inp,flex:1}}/>
+                  <select value={bMins} onChange={e=>setBMins(parseInt(e.target.value))} style={{...inp,flex:1,cursor:"pointer"}}>
+                    {EST_OPTIONS.map(m=><option key={m} value={m}>{EST_LABELS[m]}</option>)}
+                  </select>
+                </div>
+                <button onClick={addBreak} disabled={!bTime} style={{...btnPrimary,opacity:!bTime?0.5:1,cursor:!bTime?"not-allowed":"pointer"}}>Add break</button>
+              </div>
+              {customBreaks.length>0&&(
+                <div style={{marginBottom:14}}>
+                  {[...customBreaks].sort((a,b)=>a.time<b.time?-1:1).map(b=>(
+                    <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,background:T.card,borderRadius:12,padding:"9px 12px",marginBottom:6}}>
+                      <span style={{fontSize:12,color:T.muted,fontWeight:700}}>{formatTime(b.time)}</span>
+                      <span style={{flex:1,fontSize:13,color:T.text,fontWeight:600}}>🍽 {b.label} · {fmtMins(b.mins)}</span>
+                      <button onClick={()=>removeBreak(b.id)} className="tap-target" style={{background:"none",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}><Icon name="X" size={14}/></button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={lbl}>Fixed-time meetings</div>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
                 <input value={mTitle} onChange={e=>setMTitle(e.target.value)} placeholder="e.g. Team sync" style={inp}/>
@@ -1422,19 +1458,29 @@
                 ? <div style={{color:T.muted,fontSize:13}}>Generating…</div>
                 : (()=>{
                     const all=[
-                      ...schedule.locked.map(x=>({...x,locked:true})),
-                      ...schedule.placements.map(x=>({...x,locked:false})),
+                      ...schedule.locked.map(x=>({...x,kind:"locked"})),
+                      ...schedule.placements.map(x=>({...x,kind:"task"})),
+                      ...(schedule.breaks||[]).map(x=>({...x,kind:"fixedbreak"})),
                     ].sort((a,b)=>a.startTime<b.startTime?-1:1);
                     const rows=[]; let prevEnd=null;
                     all.forEach(item=>{
                       if(prevEnd&&timeToMins(item.startTime)>timeToMins(prevEnd)) rows.push({type:"break",mins:timeToMins(item.startTime)-timeToMins(prevEnd)});
-                      rows.push({type:"task",...item});
+                      rows.push({type:item.kind==="fixedbreak"?"fixedbreak":"task",locked:item.kind==="locked",...item});
                       prevEnd=item.endTime;
                     });
                     return(
                       <>
                         {rows.map((r,i)=>{
                           if(r.type==="break") return <div key={i} style={{fontSize:11,color:T.muted,padding:"4px 0",textAlign:"center",fontStyle:"italic"}}>☕ {r.mins}m break</div>;
+                          if(r.type==="fixedbreak") return (
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:T.subtle,borderRadius:12,borderLeft:`4px solid ${T.muted}`,padding:"9px 12px",marginBottom:6}}>
+                              <span style={{fontSize:12,color:T.muted,fontWeight:700,width:56,flexShrink:0}}>{formatTime(r.startTime)}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:13,fontWeight:700,color:T.text}}>🍽 {r.label}</div>
+                                <div style={{fontSize:11,color:T.muted}}>{fmtMins(timeToMins(r.endTime)-timeToMins(r.startTime))}</div>
+                              </div>
+                            </div>
+                          );
                           const t=tasks.find(x=>x.id===r.taskId); if(!t) return null;
                           const cat=categories.find(c=>c.id===t.category);
                           return(
@@ -3232,6 +3278,7 @@
     const [slotMins,setSlotMins]=useState(()=>LS.get("dt_slotmins",15)); // 15 | 30 | 60
     const [workHours,setWorkHours]=useState(()=>LS.get("dt_workhours",{start:9,end:17}));
     const [breakCadence,setBreakCadence]=useState(()=>LS.get("dt_breakcadence",{blockMins:90,breakMins:10,mode:"after"}));
+    const [customBreaks,setCustomBreaks]=useState(()=>LS.get("dt_custombreaks",[]));
     const [showPlanDay,setShowPlanDay]=useState(false);
     const [doneVis,setDoneVis]=useState(()=>LS.get("dt_donevis","instant"));
     const [defaultCat,setDefaultCat]=useState(()=>LS.get("dt_defaultcat","personal"));
@@ -3269,6 +3316,7 @@
           defaultCat: JSON.parse(localStorage.getItem("dt_defaultcat")||'"personal"'),
           workHours: JSON.parse(localStorage.getItem("dt_workhours")||"null"),
           breakCadence: JSON.parse(localStorage.getItem("dt_breakcadence")||"null"),
+          customBreaks: JSON.parse(localStorage.getItem("dt_custombreaks")||"null"),
         };
         await sbSet(syncKey, snapshot);
         setSyncStatus("ok");
@@ -3304,6 +3352,7 @@
         if(cloud.defaultCat) setDefaultCat(cloud.defaultCat);
         if(cloud.workHours) setWorkHours(cloud.workHours);
         if(cloud.breakCadence) setBreakCadence(cloud.breakCadence);
+        if(cloud.customBreaks) setCustomBreaks(cloud.customBreaks);
 
         setSyncStatus("ok");
         setTimeout(()=>setSyncStatus("idle"), 2000);
@@ -3324,6 +3373,7 @@
     useEffect(()=>LS.set("dt_slotmins",slotMins),[slotMins]);
     useEffect(()=>LS.set("dt_workhours",workHours),[workHours]);
     useEffect(()=>LS.set("dt_breakcadence",breakCadence),[breakCadence]);
+    useEffect(()=>LS.set("dt_custombreaks",customBreaks),[customBreaks]);
     useEffect(()=>LS.set("dt_donevis",doneVis),[doneVis]);
     useEffect(()=>LS.set("dt_synckey",syncKey),[syncKey]);
     useEffect(()=>LS.set("dt_defaultcat",defaultCat),[defaultCat]);
@@ -3336,7 +3386,7 @@
       if(!syncKey) return;
       clearTimeout(syncTimer.current);
       // Capture current state in closure so push uses fresh values
-      const localSnapshot = {tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence};
+      const localSnapshot = {tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence, customBreaks};
       syncTimer.current = setTimeout(async ()=>{
         if(!syncKey) return;
         setSyncStatus("syncing");
@@ -3363,7 +3413,7 @@
           .catch(()=>setSyncStatus("error"));
       }, 2000);
       return ()=>clearTimeout(syncTimer.current);
-    }, [tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence, syncKey]);
+    }, [tasks, goals, categories, deletedIds, savedSorts, dayHours, doneVis, defaultCat, workHours, breakCadence, customBreaks, syncKey]);
 
     // Pull on mount
     useEffect(()=>{ if(syncKey) pullSync(); }, []);
@@ -3581,7 +3631,7 @@
           {focusTask&&<FocusMode task={focusTask} onDone={completed=>{updateTask(focusTask.id,{status:completed?"Done":"Not Started"});setFocusTask(null);}} onGiveUp={()=>setFocusTask(null)}/>}
           {showWheel&&<SpinWheel tasks={tasks} categories={categories} onClose={()=>{setShowWheel(false);setWheelWinner(null);}} onResult={id=>{updateTask(id,{status:"In Progress"});setWheelWinner(tasks.find(t=>t.id===id));}} onFocus={w=>{setShowWheel(false);setFocusTask(w||wheelWinner);}} />}
           {editTask&&<TaskModal task={editTask} categories={categories} onSave={handleSave} onDelete={handleDelete} onClose={()=>setEditTask(null)}/>}
-          {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} onEdit={setEditTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)}/>}
+          {showPlanDay&&<PlanDayModal tasks={tasks} categories={categories} onAdd={addTask} onUpdate={updateTask} onEdit={setEditTask} workHours={workHours} onWorkHoursChange={setWorkHours} breakCadence={breakCadence} onBreakCadenceChange={setBreakCadence} customBreaks={customBreaks} onCustomBreaksChange={setCustomBreaks} defaultCat={defaultCat} onClose={()=>setShowPlanDay(false)}/>}
           {showSettings&&<SettingsPanel categories={categories} onCategoriesChange={setCategories} onDeleteCategory={deleteCategory} tasks={tasks} dayHours={dayHours} onDayHoursChange={setDayHours} slotMins={slotMins} onSlotMinsChange={setSlotMins} doneVis={doneVis} onDoneVisChange={setDoneVis} defaultCat={defaultCat} onDefaultCatChange={setDefaultCat} syncKey={syncKey} onSyncKeyChange={setSyncKey} syncStatus={syncStatus} onPullSync={async()=>{await pushSync();await pullSync();}}
             onImport={imported=>{setTasks(imported);setShowSettings(false);}} onClose={()=>setShowSettings(false)}
             themeId={themeId} isDark={isDark} onThemeChange={setThemeId} onModeChange={setIsDark}/>}
