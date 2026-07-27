@@ -1298,7 +1298,10 @@
                         <span onClick={e=>{e.stopPropagation();toggleToday(t);}} title="Include today" style={{width:20,height:20,borderRadius:6,border:`2px solid ${included?accent:T.muted}`,background:included?accent:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
                           {included&&<Icon name="Check" size={12} color={accentText}/>}
                         </span>
-                        <span style={{flex:1,fontSize:13,color:T.text,fontWeight:included?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,color:T.text,fontWeight:included?700:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                          {t.scheduledTime&&<div style={{fontSize:10,color:"#7DCFCB",fontWeight:700,display:"flex",alignItems:"center",gap:3,marginTop:1,fontFamily:"'Nunito',sans-serif"}}><Icon name="Clock" size={9} color="#7DCFCB"/>{formatTime(t.scheduledTime)}{t.scheduledDate&&t.scheduledDate!==today?` · ${formatDate(t.scheduledDate)}`:""}</div>}
+                        </div>
                         <span style={{width:48,display:"flex",justifyContent:"flex-end",flexShrink:0}}>
                           {t.priority&&<span style={{fontSize:10,fontWeight:700,color:PRIORITY_COLORS[t.priority],background:PRIORITY_COLORS[t.priority]+"20",border:`1px solid ${PRIORITY_COLORS[t.priority]}40`,borderRadius:999,padding:"1px 7px",fontFamily:"'Nunito',sans-serif"}}>{t.priority}</span>}
                         </span>
